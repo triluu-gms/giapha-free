@@ -34,7 +34,12 @@ export default function PhotoViewer({ src, caption, onClose }: Props) {
       ref={dialog}
       className="photo-viewer"
       aria-label={caption}
-      onClose={onClose}
+      // Escape. Not onClose: closing the dialog when it unmounts (as React does twice
+      // in development) must not count as the user closing it.
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
         // The dialog itself fills the screen; only its contents stop the click.
         if (e.target === e.currentTarget) onClose();

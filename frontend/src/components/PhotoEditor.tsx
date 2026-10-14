@@ -175,7 +175,12 @@ export default function PhotoEditor({ file, onDone, onCancel, onError }: Props) 
       ref={dialog}
       className="photo-editor"
       aria-labelledby="photo-editor-title"
-      onClose={() => !finished.current && onCancel()}
+      // Escape. Not onClose: closing the dialog when it unmounts (as React does twice
+      // in development) must not count as the user cancelling.
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!finished.current) onCancel();
+      }}
     >
       <div className="photo-editor-head">
         <h2 id="photo-editor-title">{t('editor.title')}</h2>
