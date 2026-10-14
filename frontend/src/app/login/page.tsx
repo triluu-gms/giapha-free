@@ -7,13 +7,14 @@ import { useAuth } from '@/components/AuthProvider';
 import ProviderIcon from '@/components/ProviderIcon';
 import { useI18n } from '@/components/I18nProvider';
 import { api } from '@/lib/api';
+import { PRIVACY_VERSION } from '@/lib/privacyAgreement';
 import type { AuthProviderInfo } from '@/lib/types';
 
 type Mode = 'signin' | 'register';
 
 function LoginForm() {
   const { status, loginWithProvider, loginWithPassword, register } = useAuth();
-  const { t } = useI18n();
+  const { t, tx } = useI18n();
   const router = useRouter();
   const params = useSearchParams();
   const rawNext = params.get('next') ?? '/';
@@ -27,6 +28,7 @@ function LoginForm() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState(params.get('email') ?? '');
   const [password, setPassword] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(params.get('error'));
   const [providers, setProviders] = useState<AuthProviderInfo[]>([]);
@@ -63,7 +65,9 @@ function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      if (mode === 'register') await register({ name: name.trim(), email: email.trim(), password, inviteToken });
+      if (mode === 'register') {
+        await register({ name: name.trim(), email: email.trim(), password, inviteToken, privacyVersion: PRIVACY_VERSION });
+      }
       else await loginWithPassword(email.trim(), password);
       // The status effect above redirects once signed in.
     } catch (err) {
@@ -114,6 +118,21 @@ function LoginForm() {
           />
           {registering && <span className="hint">{t('login.passwordHint')}</span>}
         </label>
+        {registering && (
+          // Consent must be given actively (Luật 91/2025/QH15, Điều 9), so the box starts unticked.
+          <label className="check">
+            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required />
+            <span>
+              {tx('login.agreePrivacy', {
+                agreement: (
+                  <Link href="/privacy" target="_blank">
+                    {t('privacy.title')}
+                  </Link>
+                ),
+              })}
+            </span>
+          </label>
+        )}
         {!registering && (
           <Link
             href={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
@@ -170,6 +189,9 @@ function LoginForm() {
             </button>
           </>
         )}
+      </p>
+      <p className="small">
+        <Link href="/privacy">{t('privacy.title')}</Link>
       </p>
     </div>
   );

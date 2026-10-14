@@ -18,7 +18,7 @@ export default function Header() {
   const { trees, current, canEdit, branchOnly, canManage, switchTree, refreshTrees } = useTrees();
   const { t, errorMessage } = useI18n();
   const pathname = usePathname();
-  const ready = user && !user.verificationRequired;
+  const ready = user && !user.verificationRequired && !user.consentRequired;
   const roleSuffix = {
     owner: '',
     admin: t('header.suffixAdmin'),

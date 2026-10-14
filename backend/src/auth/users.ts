@@ -2,6 +2,7 @@ import { query } from '../db';
 import { HttpError } from '../errors';
 import { removeStoredFiles } from '../trees/photos';
 import type { Locale } from './cookies';
+import { PRIVACY_VERSION } from './privacy';
 import type { OAuthProfile } from './providers';
 import { createLinkToken, hashLinkToken } from './secureTokens';
 
@@ -23,6 +24,11 @@ export interface AuthUser {
   lastLoginAt: string;
   /** A new email waiting for its confirmation link to be clicked (still unexpired). */
   pendingEmail: string | null;
+  /** True until the user accepts the current personal data agreement (PRIVACY_VERSION). */
+  consentRequired: boolean;
+  /** The agreement version the user last accepted, and when. Null if never, or withdrawn. */
+  privacyVersion: string | null;
+  privacyAcceptedAt: string | null;
 }
 
 type UserRow = { user: AuthUser };
@@ -36,7 +42,9 @@ const USER_FIELDS = `.id, .email, .name, .avatarUrl, .createdAt, .lastLoginAt,
   emailVerified: coalesce(u.emailVerified, u.email IS NOT NULL),
   verificationRequired: u.passwordHash IS NOT NULL AND NOT coalesce(u.emailVerified, false),
   hasPassword: u.passwordHash IS NOT NULL,
-  pendingEmail: CASE WHEN datetime(u.pendingEmailExpiresAt) > datetime() THEN u.pendingEmail END`;
+  pendingEmail: CASE WHEN datetime(u.pendingEmailExpiresAt) > datetime() THEN u.pendingEmail END,
+  .privacyVersion, .privacyAcceptedAt,
+  consentRequired: coalesce(u.privacyVersion, '') <> '${PRIVACY_VERSION}'`;
 
 // Every account gets a private tree it owns.
 const CREATE_PERSONAL_TREE = `
@@ -78,6 +86,8 @@ export async function createPasswordUser(input: {
   passwordHash: string;
   emailVerified: boolean;
   locale: Locale;
+  /** The registration form's agreement checkbox (the caller checks the version). */
+  privacyVersion: string;
 }): Promise<AuthUser> {
   const now = new Date().toISOString();
   const [existing] = await query<{
@@ -131,7 +141,8 @@ export async function createPasswordUser(input: {
     const [created] = await query<UserRow>(
       `CREATE (u:User {
          id: randomUUID(), email: $email, emailVerified: $emailVerified, name: $name,
-         passwordHash: $passwordHash, createdAt: $now, lastLoginAt: $now
+         passwordHash: $passwordHash, createdAt: $now, lastLoginAt: $now,
+         privacyVersion: $privacyVersion, privacyAcceptedAt: $now
        })
        ${CREATE_PERSONAL_TREE}
        RETURN u {${USER_FIELDS}} AS user`,
@@ -450,6 +461,41 @@ export async function updateUserName(userId: string, name: string): Promise<Auth
   const [row] = await query<UserRow>(
     `MATCH (u:User {id: $id}) SET u.name = $name RETURN u {${USER_FIELDS}} AS user`,
     { id: userId, name },
+    'WRITE',
+  );
+  return row?.user ?? null;
+}
+
+// ---------- Personal data agreement ----------
+
+/**
+ * Records that the user accepted the current agreement. The version and time are
+ * kept as the record of consent (Luật 91/2025/QH15, Điều 9).
+ */
+export async function acceptPrivacy(userId: string): Promise<AuthUser | null> {
+  const [row] = await query<UserRow>(
+    `MATCH (u:User {id: $id})
+     SET u.privacyVersion = $version, u.privacyAcceptedAt = $now
+     REMOVE u.privacyWithdrawnAt
+     RETURN u {${USER_FIELDS}} AS user`,
+    { id: userId, version: PRIVACY_VERSION, now: new Date().toISOString() },
+    'WRITE',
+  );
+  return row?.user ?? null;
+}
+
+/**
+ * Withdraws consent (Điều 10). The account and its data stay until the user
+ * deletes them, but the app stops using them: trees, invitations and reminder
+ * emails are blocked until the agreement is accepted again.
+ */
+export async function withdrawPrivacy(userId: string): Promise<AuthUser | null> {
+  const [row] = await query<UserRow>(
+    `MATCH (u:User {id: $id})
+     SET u.privacyWithdrawnAt = $now
+     REMOVE u.privacyVersion, u.privacyAcceptedAt
+     RETURN u {${USER_FIELDS}} AS user`,
+    { id: userId, now: new Date().toISOString() },
     'WRITE',
   );
   return row?.user ?? null;

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireVerifiedEmail } from '../auth/middleware';
+import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
 import { markEmailVerified } from '../auth/users';
 import { HttpError } from '../errors';
 import { tokenSchema } from '../schemas';
@@ -28,7 +28,7 @@ invitationsRouter.get('/preview', async (req, res) => {
 // POST /api/invitations/accept { token } -> accept from the emailed link.
 // The link was delivered to the invited address, so it also proves the user
 // owns that address: an unverified account with the same email is verified here.
-invitationsRouter.post('/accept', requireAuth, async (req, res) => {
+invitationsRouter.post('/accept', requireAuth, requirePrivacyConsent, async (req, res) => {
   const { token } = tokenSchema.parse(req.body);
   const invitation = await findInvitationByToken(token);
   if (!invitation) throw new HttpError(404, NOT_VALID);
@@ -40,8 +40,8 @@ invitationsRouter.post('/accept', requireAuth, async (req, res) => {
   res.json({ treeId: await acceptInvitation(invitation, user) });
 });
 
-// Everything below needs a verified email.
-invitationsRouter.use(requireAuth, requireVerifiedEmail);
+// Everything below needs the accepted data agreement and a verified email.
+invitationsRouter.use(requireAuth, requirePrivacyConsent, requireVerifiedEmail);
 
 // GET /api/invitations/mine -> pending invitations for my email address
 invitationsRouter.get('/mine', async (req, res) => {

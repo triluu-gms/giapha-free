@@ -114,7 +114,12 @@ export const registerSchema = z.object({
   password: newPassword,
   /** Present when registering from an invitation link. */
   inviteToken: z.string().min(1).max(200).optional(),
+  /** The personal data agreement version the user ticked on the form (must be the current one). */
+  privacyVersion: z.string({ error: 'Please accept the personal data agreement' }).min(1).max(40),
 });
+
+/** POST /auth/privacy: the agreement version the user read and accepted. */
+export const privacyConsentSchema = z.object({ version: z.string().min(1).max(40) });
 
 export const tokenSchema = z.object({ token: z.string().min(1).max(200) });
 

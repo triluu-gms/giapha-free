@@ -1824,3 +1824,73 @@ tr.row-error td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Personal data agreement (/privacy, the consent screen, the register checkbox) ---- */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.check input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.login-card.consent-card {
+  max-width: 720px;
+}
+.consent-scroll {
+  max-height: min(50vh, 460px);
+  overflow-y: auto;
+  margin: 12px 0 14px;
+  padding: 4px 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.agreement {
+  text-align: left;
+  line-height: 1.6;
+}
+.agreement h2 {
+  margin: 18px 0 6px;
+  font-size: 16px;
+}
+.agreement p {
+  margin: 0 0 8px;
+}
+.agreement ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.agreement li {
+  margin-bottom: 4px;
+}
+.privacy-page {
+  max-width: 820px;
+}
+.privacy-page .agreement h1 {
+  margin-bottom: 4px;
+}
+/* Taller than the screen on phones: start at the top (not clipped) and scroll. */
+.center.consent-wrap {
+  justify-content: safe center;
+  overflow-y: auto;
+}
+@media (max-width: 600px) {
+  .center.consent-wrap {
+    padding: 12px 16px;
+  }
+  .login-card.consent-card {
+    padding: 20px 16px;
+  }
+}

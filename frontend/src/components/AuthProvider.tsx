@@ -14,7 +14,13 @@ interface AuthContextValue {
   /** Starts social login/registration with the given provider (full-page redirect). */
   loginWithProvider: (provider: string, nextPath?: string) => void;
   loginWithPassword: (email: string, password: string) => Promise<void>;
-  register: (input: { name: string; email: string; password: string; inviteToken?: string }) => Promise<void>;
+  register: (input: {
+    name: string;
+    email: string;
+    password: string;
+    inviteToken?: string;
+    privacyVersion: string;
+  }) => Promise<void>;
   /** Re-reads the signed-in user (e.g. after verifying the email in another tab). */
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
@@ -60,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (input: { name: string; email: string; password: string; inviteToken?: string }) => {
+    async (input: { name: string; email: string; password: string; inviteToken?: string; privacyVersion: string }) => {
       const { joinedTreeId, ...me } = await api.register(input);
       // Registered from an invitation: open the tree they were invited to.
       if (joinedTreeId) rememberTree(joinedTreeId);

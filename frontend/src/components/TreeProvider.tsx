@@ -34,7 +34,7 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const ready = status === 'authenticated' && !!user && !user.verificationRequired;
+  const ready = status === 'authenticated' && !!user && !user.verificationRequired && !user.consentRequired;
 
   const refreshTrees = useCallback(async (selectId?: string) => {
     setLoading(true);

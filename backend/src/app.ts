@@ -4,13 +4,15 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { ZodError } from 'zod';
-import { requireAuth, requireCsrfHeader, requireVerifiedEmail } from './auth/middleware';
+import { requireAuth, requireCsrfHeader, requirePrivacyConsent, requireVerifiedEmail } from './auth/middleware';
 import { config } from './config';
 import { getDriver, query } from './db';
 import { HttpError } from './errors';
 import { runReminders } from './reminders/run';
 import { authRouter } from './routes/auth';
-import { invitationsRouter } from './routes/invitations';import { treesRouter } from './routes/trees';
+import { invitationsRouter } from './routes/invitations';
+import { treesRouter } from './routes/trees';
+
 const app = express();
 
 // Vercel and most hosts sit behind a proxy; needed for correct req.protocol / req.secure.
@@ -80,9 +82,9 @@ app.use('/api/auth', authRouter);
 // Preview is public; accepting/declining checks the session inside the router.
 app.use('/api/invitations', invitationsRouter);
 
-// ---- Protected routes: a valid session cookie and a verified email ----
+// ---- Protected routes: a valid session cookie, the accepted data agreement and a verified email ----
 // Tree content is scoped to /api/trees/:treeId and the caller's membership of it.
-app.use('/api/trees', requireAuth, requireVerifiedEmail, treesRouter);
+app.use('/api/trees', requireAuth, requirePrivacyConsent, requireVerifiedEmail, treesRouter);
 // No application-wide admin: there is no route that lists or manages other accounts.
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -5,19 +5,26 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from './AuthProvider';
 import { useI18n } from './I18nProvider';
+import { ConsentNotice } from './PrivacyAgreement';
 import { useTrees } from './TreeProvider';
 
 interface Props {
   children: ReactNode;
   /** Wait for the current tree before rendering (default true). */
   needsTree?: boolean;
+  /**
+   * Require the accepted personal data agreement (default true). My account
+   * opts out, so someone who declines can still delete their account there.
+   */
+  needsConsent?: boolean;
 }
 
 /**
- * Renders children only for signed-in users with a verified email (and a
- * loaded tree, unless needsTree is false); sends anonymous visitors to /login.
+ * Renders children only for signed-in users who accepted the personal data
+ * agreement and verified their email (and a loaded tree, unless needsTree is
+ * false); sends anonymous visitors to /login.
  */
-export default function RequireAuth({ children, needsTree = true }: Props) {
+export default function RequireAuth({ children, needsTree = true, needsConsent = true }: Props) {
   const { status, user } = useAuth();
   const { current, error: treeError, refreshTrees } = useTrees();
   const { t } = useI18n();
@@ -30,6 +37,8 @@ export default function RequireAuth({ children, needsTree = true }: Props) {
 
   if (status !== 'authenticated' || !user) return <div className="center muted">{t('common.loading')}</div>;
 
+  // The agreement comes first: it covers the account data as well as the trees.
+  if (needsConsent && user.consentRequired) return <ConsentNotice />;
   if (user.verificationRequired) return <VerifyEmailNotice email={user.email} />;
 
   if (needsTree && !current) {

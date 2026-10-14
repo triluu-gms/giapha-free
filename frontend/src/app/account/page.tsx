@@ -368,9 +368,12 @@ function DeleteAccount() {
   }
 
   return (
-    <section className="card account-card danger-zone">
+    <section className="card account-card danger-zone" id="delete-account">
       <h2>{t('deleteAccount.title')}</h2>
-      <p className="muted small">{t('deleteAccount.hint', { count: owned.length })}</p>
+      <p className="muted small">
+        {/* Without the agreement the trees aren't loaded, so their number isn't known. */}
+        {user.consentRequired ? t('deleteAccount.hintAllTrees') : t('deleteAccount.hint', { count: owned.length })}
+      </p>
       {shared.length > 0 && (
         <div className="callout warning">
           <p>{t('deleteAccount.sharedWarning')}</p>
@@ -421,10 +424,83 @@ function DeleteAccount() {
   );
 }
 
+/**
+ * The personal data agreement: which version was accepted and when, and
+ * withdrawing consent (Luật 91/2025/QH15, Điều 10).
+ */
+function PrivacyConsent() {
+  const { user, refreshUser } = useAuth();
+  const { t, formatDate, errorMessage } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!user) return null;
+
+  async function withdraw() {
+    if (!window.confirm(t('privacy.withdrawConfirm'))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.withdrawPrivacy();
+      await refreshUser();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card account-card">
+      <h2>{t('privacy.title')}</h2>
+      {user.consentRequired ? (
+        <div className="callout warning">
+          <p>{t('privacy.notAccepted')}</p>
+          <Link href="/" className="btn primary">
+            {t('privacy.readAndAccept')}
+          </Link>
+        </div>
+      ) : (
+        <>
+          <p className="muted small">
+            {t('privacy.acceptedOn', {
+              version: user.privacyVersion ?? '',
+              date: formatDate(user.privacyAcceptedAt),
+            })}
+          </p>
+          <p className="muted small">{t('privacy.withdrawHint')}</p>
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+      <div className="actions">
+        <Link href="/privacy" className="btn">
+          {t('privacy.view')}
+        </Link>
+        {!user.consentRequired && (
+          <button type="button" className="btn" onClick={withdraw} disabled={busy}>
+            {busy ? t('common.pleaseWait') : t('privacy.withdraw')}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Account() {
   const { user } = useAuth();
   const { t, tx } = useI18n();
   if (!user) return null;
+
+  // Without the agreement, only what's needed to read it again or leave is shown.
+  if (user.consentRequired) {
+    return (
+      <div className="page">
+        <h1>{t('account.title')}</h1>
+        {user.email && <p className="muted">{tx('account.signedInAs', { email: <strong>{user.email}</strong> })}</p>}
+        <PrivacyConsent />
+        <DeleteAccount />
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -436,6 +512,7 @@ function Account() {
       </section>
       <ChangeEmail />
       <Reminders email={user.email} />
+      <PrivacyConsent />
       <DeleteAccount />
     </div>
   );
@@ -443,7 +520,7 @@ function Account() {
 
 export default function AccountPage() {
   return (
-    <RequireAuth needsTree={false}>
+    <RequireAuth needsTree={false} needsConsent={false}>
       <Account />
     </RequireAuth>
   );

@@ -153,6 +153,11 @@ export interface User {
   lastLoginAt: string;
   /** A new email waiting to be confirmed from the link sent to it. */
   pendingEmail: string | null;
+  /** The current personal data agreement hasn't been accepted (never, withdrawn, or a newer version). */
+  consentRequired: boolean;
+  /** The agreement version last accepted, and when. */
+  privacyVersion: string | null;
+  privacyAcceptedAt: string | null;
 }
 
 export interface AuthProviderInfo {

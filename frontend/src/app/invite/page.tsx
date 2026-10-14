@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
+import { ConsentNotice } from '@/components/PrivacyAgreement';
 import { useTrees } from '@/components/TreeProvider';
 import { api } from '@/lib/api';
 import { rememberTree } from '@/lib/currentTree';
@@ -62,6 +63,9 @@ function InviteLanding() {
     );
   }
   if (!preview || status === 'loading') return <p className="muted">{t('invite.loading')}</p>;
+  // Joining shows the tree's personal data: the agreement comes first. Accepting it reloads the user, so the
+  // invitation shows again afterwards.
+  if (user?.consentRequired && !preview.expired && user.email === preview.email) return <ConsentNotice />;
 
   const here = `/invite?token=${encodeURIComponent(token)}`;
   const sameEmail = user?.email === preview.email;

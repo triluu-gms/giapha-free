@@ -93,7 +93,7 @@ export const api = {
   /** Full-page URL that starts social login/registration and returns to `next` afterwards. */
   loginUrl: (provider: string, next = '/') => `/api/auth/${encodeURIComponent(provider)}/login${qs({ next })}`,
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
-  register: (input: { name: string; email: string; password: string; inviteToken?: string }) =>
+  register: (input: { name: string; email: string; password: string; inviteToken?: string; privacyVersion: string }) =>
     request<User & { joinedTreeId?: string }>('/api/auth/register', { method: 'POST', body: JSON.stringify(input) }),
   passwordLogin: (email: string, password: string) =>
     request<User>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -121,6 +121,11 @@ export const api = {
   confirmEmailChange: (token: string) =>
     request<{ email: string }>('/api/auth/email/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
   cancelEmailChange: () => request<User>('/api/auth/email', { method: 'DELETE' }),
+  /** Accepts the personal data agreement version the user was shown. */
+  acceptPrivacy: (version: string) =>
+    request<User>('/api/auth/privacy', { method: 'POST', body: JSON.stringify({ version }) }),
+  /** Withdraws consent: trees, invitations and reminders stop until it is given again. */
+  withdrawPrivacy: () => request<User>('/api/auth/privacy', { method: 'DELETE' }),
   /** Deletes the account and the trees it owns. Confirm with the password, or (no password) the email typed out. */
   deleteAccount: (proof: { password?: string; confirm?: string }) =>
     request<void>('/api/auth/delete-account', { method: 'POST', body: JSON.stringify(proof) }),

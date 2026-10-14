@@ -30,7 +30,8 @@ The browser only ever talks to the frontend's domain. Next.js forwards `/api/*` 
 ```
 (:User {id, email, emailVerified, name, avatarUrl, passwordHash?, role, createdAt, lastLoginAt,
         verifyTokenHash?, verifyTokenExpiresAt?, resetTokenHash?, resetTokenExpiresAt?, passwordChangedAt?,
-        remindersEnabled?, reminderDaysBefore?, locale?})   // locale: language of reminder emails
+        remindersEnabled?, reminderDaysBefore?, locale?,    // locale: language of reminder emails
+        privacyVersion?, privacyAcceptedAt?, privacyWithdrawnAt?})   // the personal data agreement accepted
 (:User)-[:HAS_ACCOUNT]->(:Account {provider, providerAccountId})        // one per linked social login
 (:User)-[:REMINDS {since, lastSentFor?}]->(:Person)   // email me before this person's death anniversary
 
@@ -218,6 +219,19 @@ Both are on **My account** (`/account`), and accounts with a password confirm wi
 - **Change email:** `POST /api/auth/email { email, password? }` stores the address as *pending* and emails a link to it: `<PUBLIC_APP_URL>/confirm-email?token=…`, valid for 24 hours. The old address gets a notice, so a stolen session can't quietly redirect the account. Clicking the link (`POST /api/auth/email/confirm { token }`, no session needed) makes it the account's verified email. Until then, the old email keeps working and `GET /api/auth/me` shows `pendingEmail`. `DELETE /api/auth/email` cancels. An address used by another account is refused (`409`, `emailTaken`), and a new link can be requested once a minute. Trees, memberships, reminders and Google/GitHub sign-in are tied to the account, not the address, so they all follow.
 - **Delete account:** `POST /api/auth/delete-account` with `{ password }`, or `{ confirm: "<the account's email>" }` for Google/GitHub-only accounts. It deletes the account, its sign-in links and every tree it owns (people, photos, invitations), removes its memberships of other trees and its reminders, and signs out. The page lists the owned trees that other people use, and suggests handing them over with **Make owner** first.
 
+### Personal data agreement (Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15)
+
+Vietnam's Personal Data Protection Law (in force since 1 January 2026) requires informed, explicit consent that can be withdrawn. The app asks for it before anyone uses a tree:
+
+- **The agreement:** `/privacy`, readable by anyone. It is in Vietnamese, the text that applies, with an English translation for reference. It names the controller, the data processed, four separate purposes (reminder emails are optional and switched on separately), the service providers and transfers abroad, retention, users' duties when entering relatives' data (living people, children under Điều 24, the deceased), the rights under Điều 4 and how to use them in the app, and breach notification. The text is in [`frontend/src/lib/privacyAgreement.ts`](frontend/src/lib/privacyAgreement.ts).
+- **Who runs the site:** set `NEXT_PUBLIC_PRIVACY_CONTROLLER` (name) and `NEXT_PUBLIC_PRIVACY_CONTACT` (an email for data requests) in the frontend project. Until then the page says they aren't configured.
+- **First sign-in:** registering with email and password requires ticking an (unticked) box that links to the agreement. Google/GitHub accounts and accounts made before the agreement see a full-screen agreement with two confirmation boxes the first time they sign in. *Accept and continue* calls `POST /api/auth/privacy { version }`. *I don't agree* signs out; the account can still be deleted from **My account**.
+- **Enforcement:** until the current version is accepted, `/api/trees/*` and the invitation endpoints answer `403` (`code: "consentRequired"`), and no reminder emails are sent. **My account** stays open, so the user can read the agreement, accept it, or delete the account.
+- **Record and withdrawal:** the accepted version and time are stored on the user (`privacyVersion`, `privacyAcceptedAt`). *Withdraw consent* on **My account** (`DELETE /api/auth/privacy`) clears them and records `privacyWithdrawnAt`, which pauses trees, invitations and reminders again. The data stays until the user deletes it.
+- **New versions:** change the text, then bump `PRIVACY_VERSION` in both `frontend/src/lib/privacyAgreement.ts` and `backend/src/auth/privacy.ts`. Everyone is then asked again, with a note that the agreement changed. A client showing an older version gets `409` (`privacyOutdated`).
+
+The agreement is a starting point written for this app, not legal advice. Have it reviewed for your situation. The law also gives the controller duties outside the app, such as impact assessment files for processing and cross-border transfers (Điều 20–21).
+
 ### Google and GitHub
 
 The backend runs the OAuth flow itself, so no third-party auth service is involved. Provider-verified emails count as verified. Signing in and registering are the same flow.
@@ -309,7 +323,7 @@ Public (no session):
 | GET | `/api/auth/providers` | The login providers that are configured |
 | GET | `/api/auth/:provider/login?next=` | Starts social login or registration |
 | GET | `/api/auth/:provider/callback` | OAuth callback |
-| POST | `/api/auth/register` | `{ name, email, password, inviteToken? }`. Creates the account, signs in, and sends the verification email (or joins the invited tree) |
+| POST | `/api/auth/register` | `{ name, email, password, inviteToken?, privacyVersion }`. `privacyVersion` is the personal data agreement version the user ticked. Creates the account, signs in, and sends the verification email (or joins the invited tree) |
 | POST | `/api/auth/login` | `{ email, password }` |
 | POST | `/api/auth/verify-email` | `{ token }` from the verification link |
 | POST | `/api/auth/forgot-password` | `{ email }`. Emails a password reset link if the account exists |
@@ -321,9 +335,10 @@ Signed in:
 
 | Method | Path | Requires | Description |
 | --- | --- | --- | --- |
-| GET | `/api/auth/me` | — | The signed-in user, including `verificationRequired` and `hasPassword` |
+| GET | `/api/auth/me` | — | The signed-in user, including `verificationRequired`, `hasPassword` and `consentRequired` |
 | PATCH | `/api/auth/me` | — | `{ name }`. Change your own display name |
 | GET / PATCH | `/api/auth/reminders` | — | Death anniversary reminder preferences: `{ enabled, daysBefore, people }`. PATCH takes `{ enabled?, daysBefore? }` (0–30) and remembers the UI language for the emails |
+| POST / DELETE | `/api/auth/privacy` | — | POST `{ version }`: accept the personal data agreement (`409`, `privacyOutdated`, for an older version). DELETE withdraws consent |
 | POST | `/api/auth/change-password` | — | `{ currentPassword, newPassword }`. Signs out other sessions |
 | POST / DELETE | `/api/auth/email` | — | POST `{ email, password? }`: emails a confirmation link to the new address (and a notice to the old one). DELETE cancels a pending change |
 | POST | `/api/auth/email/confirm` | public | `{ token }` from the link: the new address becomes the account's email |
@@ -365,7 +380,7 @@ Error codes:
 
 - `400`: validation failed, a reset link is invalid or expired, or the current password is wrong.
 - `401`: no session, a session from before a password change, or the email or password is wrong.
-- `403`: role too low, email not verified, an invitation meant for another address, or a missing CSRF header.
+- `403`: role too low, the personal data agreement not accepted (`consentRequired`), email not verified, an invitation meant for another address, or a missing CSRF header.
 - `404`: not found, or not a member.
 - `409`: the email is already registered, or the person already has access.
 - `410`: the invitation has expired.
@@ -464,7 +479,7 @@ Open <http://localhost:3000> (not port 4000) and click **Register**. Without Res
 - Adds the indexes for uploaded photos and email changes.
 - Removes the old app-wide `(:Settings)` node; settings are now stored per tree.
 
-Accounts registered earlier with email and password will be asked to verify their email the next time they sign in.
+Accounts registered earlier with email and password will be asked to verify their email the next time they sign in. Every existing account is asked to accept the personal data agreement at its next sign-in.
 
 ## 6. Deploy to Vercel
 
@@ -505,7 +520,9 @@ A second daily Vercel Cron job, at 00:00 UTC (07:00 in Vietnam), calls `GET /api
 
 - **Root Directory:** `frontend`
 - **Framework Preset:** Next.js (detected automatically)
-- **Environment variable:** `API_URL=https://<backend>.vercel.app`. The `/api/*` rewrite is generated at build time, so redeploy after changing it.
+- **Environment variables:**
+  - `API_URL=https://<backend>.vercel.app`. The `/api/*` rewrite is generated at build time, so redeploy after changing it.
+  - `NEXT_PUBLIC_PRIVACY_CONTROLLER` and `NEXT_PUBLIC_PRIVACY_CONTACT`: who runs the site and an email for personal data requests, shown in the [personal data agreement](#personal-data-agreement-luật-bảo-vệ-dữ-liệu-cá-nhân-912025qh15). Also built in, so redeploy after changing them.
 
 Once both are deployed, open `https://<frontend>.vercel.app/api/health`. It should return `{"status":"ok"}`, which shows the proxy is working.
 

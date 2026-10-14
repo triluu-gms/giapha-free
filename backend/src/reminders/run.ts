@@ -38,6 +38,7 @@ export async function runReminders(now = new Date()): Promise<{ date: string; em
   const rows = await query<Row>(
     `MATCH (u:User)-[r:REMINDS]->(p:Person)
      WHERE u.remindersEnabled = true AND u.email IS NOT NULL AND coalesce(u.emailVerified, true)
+       AND u.privacyAcceptedAt IS NOT NULL
        AND p.deathDate =~ $fullDate
      MATCH (u)-[:MEMBER_OF]->(t:Tree {id: p.treeId})
      RETURN u.id AS userId, u.email AS email, u.locale AS locale,

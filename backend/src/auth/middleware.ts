@@ -44,6 +44,15 @@ export const requireVerifiedEmail: RequestHandler = (req, _res, next) => {
   next();
 };
 
+/** Trees and invitations hold personal data: the user must have accepted the current agreement. */
+export const requirePrivacyConsent: RequestHandler = (req, _res, next) => {
+  if (!req.user) throw new HttpError(401, 'Authentication required');
+  if (req.user.consentRequired) {
+    throw new HttpError(403, 'Please read and accept the personal data agreement first.', 'consentRequired');
+  }
+  next();
+};
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**

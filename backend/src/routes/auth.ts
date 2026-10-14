@@ -3,10 +3,12 @@ import { Router } from 'express';
 import { clearSessionCookie, OAUTH_STATE_COOKIE, readCookie, requestLocale, setSessionCookie } from '../auth/cookies';
 import { requireAuth } from '../auth/middleware';
 import { getDummyHash, hashPassword, verifyPassword } from '../auth/passwords';
+import { PRIVACY_VERSION } from '../auth/privacy';
 import { getProvider, getProviders } from '../auth/providers';
 import { assertLoginAllowed, clearLoginFailures, recordLoginFailure } from '../auth/rateLimit';
 import { signAccessToken, signOAuthState, verifyOAuthState } from '../auth/tokens';
 import {
+  acceptPrivacy,
   cancelEmailChange,
   changePassword,
   confirmEmailChange,
@@ -24,6 +26,7 @@ import {
   updateUserName,
   upsertOAuthUser,
   verifyEmailToken,
+  withdrawPrivacy,
 } from '../auth/users';
 import { config } from '../config';
 import { sendEmail } from '../email/mailer';
@@ -35,6 +38,7 @@ import {
   emailChangeSchema,
   forgotPasswordSchema,
   passwordLoginSchema,
+  privacyConsentSchema,
   profileUpdateSchema,
   registerSchema,
   reminderPreferencesSchema,
@@ -133,7 +137,8 @@ async function sendVerification(user: { id: string; email: string | null; name: 
 // ownership: the email is verified and the invitation accepted right away.
 // Otherwise a verification email is sent and the tree stays locked until it is confirmed.
 authRouter.post('/register', async (req, res) => {
-  const { name, email, password, inviteToken } = registerSchema.parse(req.body);
+  const { name, email, password, inviteToken, privacyVersion } = registerSchema.parse(req.body);
+  assertCurrentPrivacyVersion(privacyVersion);
   const invitation = inviteToken ? await findInvitationByToken(inviteToken) : null;
   const viaInvitation = !!invitation && !invitation.expired && invitation.email === email;
 
@@ -143,6 +148,7 @@ authRouter.post('/register', async (req, res) => {
     passwordHash: await hashPassword(password),
     emailVerified: viaInvitation,
     locale: requestLocale(req),
+    privacyVersion,
   });
 
   let joinedTreeId: string | undefined;
@@ -345,6 +351,33 @@ authRouter.post('/delete-account', requireAuth, async (req, res) => {
 // GET /api/auth/me -> the signed-in user
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json(req.user);
+});
+
+/** The agreement version a client showed must be the one in force, or the user agreed to an older text. */
+function assertCurrentPrivacyVersion(version: string) {
+  if (version !== PRIVACY_VERSION) {
+    throw new HttpError(
+      409,
+      'The personal data agreement has been updated. Reload the page and read the new version.',
+      'privacyOutdated',
+    );
+  }
+}
+
+// POST /api/auth/privacy { version } -> accepts the personal data agreement (Luật 91/2025/QH15)
+authRouter.post('/privacy', requireAuth, async (req, res) => {
+  const { version } = privacyConsentSchema.parse(req.body);
+  assertCurrentPrivacyVersion(version);
+  const updated = await acceptPrivacy(req.user!.id);
+  if (!updated) throw notFound('User');
+  res.json(updated);
+});
+
+// DELETE /api/auth/privacy -> withdraws consent; trees, invitations and reminders stop until accepted again
+authRouter.delete('/privacy', requireAuth, async (req, res) => {
+  const updated = await withdrawPrivacy(req.user!.id);
+  if (!updated) throw notFound('User');
+  res.json(updated);
 });
 
 // PATCH /api/auth/me { name } -> changes the signed-in user's display name

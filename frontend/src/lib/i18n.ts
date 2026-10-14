@@ -103,8 +103,28 @@ const en = {
   'login.newHere': 'New here?',
   'login.createAccount': 'Create an account',
   'login.forgotPassword': 'Forgot password?',
+  'login.agreePrivacy': 'I have read and agree to the {agreement}.',
 
-  // ---- Password reset / change ----
+  // ---- Personal data agreement (Luật 91/2025/QH15) ----
+  'privacy.title': 'Personal data agreement',
+  'privacy.intro':
+    'Before you use family trees, please read how personal data (yours and your relatives’) is processed, and accept the agreement.',
+  'privacy.updatedIntro':
+    'The personal data agreement has been updated. Please read the new version and accept it to keep using family trees.',
+  'privacy.accept': 'Accept and continue',
+  'privacy.declineSignOut': 'I don’t agree, sign out',
+  'privacy.declineHint': 'If you don’t agree, nothing more is processed. You can also',
+  'privacy.deleteLink': 'delete your account.',
+  'privacy.acceptedOn': 'You accepted version {version} on {date}.',
+  'privacy.notAccepted':
+    'You haven’t accepted the current personal data agreement, so your family trees, invitations and reminders are paused.',
+  'privacy.readAndAccept': 'Read and accept',
+  'privacy.view': 'Read the agreement',
+  'privacy.withdraw': 'Withdraw consent',
+  'privacy.withdrawHint':
+    'Withdrawing consent pauses your family trees, invitations and reminder emails until you accept again. Your data is kept until you delete it; to remove it, delete your account below.',
+  'privacy.withdrawConfirm':
+    'Withdraw your consent? You won’t be able to use family trees until you accept the agreement again.',
   'forgot.title': 'Reset your password',
   'forgot.hint': 'Enter your account’s email and we’ll send you a link to choose a new password.',
   'forgot.submit': 'Send reset link',
@@ -150,6 +170,8 @@ const en = {
   'deleteAccount.sharedWarning': 'Other people use these trees of yours. They will lose them:',
   'deleteAccount.otherMembers': '{count} other member(s)',
   'deleteAccount.handOver': 'To keep a tree for them, open it, go to {share} and use “Make owner” first.',
+  'deleteAccount.hintAllTrees':
+    'Deletes your account and every tree you own, with all their people, relationships and photos, for everyone who has access to them. You leave the trees others shared with you. This can’t be undone.',
   'deleteAccount.start': 'Delete my account…',
   'deleteAccount.typeEmail': 'Type {email} to confirm',
   'deleteAccount.submit': 'Delete account forever',
@@ -585,6 +607,8 @@ const en = {
   'error.emailChangeCooldown': 'A confirmation email was sent less than a minute ago. Please check that inbox.',
   'error.emailLinkExpired': 'This confirmation link is invalid or has expired. Ask for a new one on My account.',
   'error.deleteConfirmMismatch': 'That doesn’t match. Type your email address exactly to confirm.',
+  'error.consentRequired': 'Please read and accept the personal data agreement first.',
+  'error.privacyOutdated': 'The personal data agreement has been updated. Reload the page and read the new version.',
   'error.treeLimit': 'You can own at most 20 trees. Hand one over to someone else to make room.',
   'error.branchRootMissing': 'Choose a person in this tree for the branch.',
   'error.bulkDeleteDisabled': 'Deleting several people at once has been turned off for this tree.',
@@ -694,6 +718,28 @@ const vi: Dictionary = {
   'login.newHere': 'Chưa có tài khoản?',
   'login.createAccount': 'Tạo tài khoản',
   'login.forgotPassword': 'Quên mật khẩu?',
+  'login.agreePrivacy': 'Tôi đã đọc và đồng ý với {agreement}.',
+
+  // ---- Thỏa thuận dữ liệu cá nhân (Luật 91/2025/QH15) ----
+  'privacy.title': 'Thỏa thuận dữ liệu cá nhân',
+  'privacy.intro':
+    'Trước khi dùng cây gia phả, vui lòng đọc cách dữ liệu cá nhân (của bạn và của người thân) được xử lý, và đồng ý với Thỏa thuận.',
+  'privacy.updatedIntro':
+    'Thỏa thuận dữ liệu cá nhân đã được cập nhật. Vui lòng đọc phiên bản mới và đồng ý để tiếp tục dùng cây gia phả.',
+  'privacy.accept': 'Đồng ý và tiếp tục',
+  'privacy.declineSignOut': 'Tôi không đồng ý, đăng xuất',
+  'privacy.declineHint': 'Nếu không đồng ý, dữ liệu sẽ không được xử lý thêm. Bạn cũng có thể',
+  'privacy.deleteLink': 'xóa tài khoản.',
+  'privacy.acceptedOn': 'Bạn đã đồng ý phiên bản {version} vào ngày {date}.',
+  'privacy.notAccepted':
+    'Bạn chưa đồng ý Thỏa thuận dữ liệu cá nhân hiện hành, nên cây gia phả, lời mời và email nhắc ngày giỗ đang tạm dừng.',
+  'privacy.readAndAccept': 'Đọc và đồng ý',
+  'privacy.view': 'Xem Thỏa thuận',
+  'privacy.withdraw': 'Rút lại sự đồng ý',
+  'privacy.withdrawHint':
+    'Rút lại sự đồng ý sẽ tạm dừng cây gia phả, lời mời và email nhắc ngày giỗ cho tới khi bạn đồng ý lại. Dữ liệu vẫn được giữ cho tới khi bạn xóa; muốn xóa hẳn, hãy xóa tài khoản ở bên dưới.',
+  'privacy.withdrawConfirm':
+    'Rút lại sự đồng ý? Bạn sẽ không dùng được cây gia phả cho tới khi đồng ý lại Thỏa thuận.',
 
   // ---- Password reset / change ----
   'forgot.title': 'Đặt lại mật khẩu',
@@ -741,6 +787,8 @@ const vi: Dictionary = {
   'deleteAccount.sharedWarning': 'Những cây sau của bạn đang có người khác dùng. Họ sẽ mất các cây này:',
   'deleteAccount.otherMembers': '{count} thành viên khác',
   'deleteAccount.handOver': 'Muốn giữ cây cho họ, hãy mở cây đó, vào {share} và dùng “Chuyển quyền sở hữu” trước.',
+  'deleteAccount.hintAllTrees':
+    'Xóa tài khoản của bạn cùng mọi cây gia phả bạn làm chủ, với toàn bộ người, quan hệ và ảnh trong đó, đối với mọi người có quyền truy cập. Bạn cũng rời khỏi các cây người khác chia sẻ với bạn. Không thể hoàn tác.',
   'deleteAccount.start': 'Xóa tài khoản của tôi…',
   'deleteAccount.typeEmail': 'Gõ {email} để xác nhận',
   'deleteAccount.submit': 'Xóa vĩnh viễn tài khoản',
@@ -1176,6 +1224,8 @@ const vi: Dictionary = {
   'error.emailChangeCooldown': 'Email xác nhận vừa được gửi chưa tới một phút. Hãy kiểm tra hộp thư đó.',
   'error.emailLinkExpired': 'Liên kết xác nhận không hợp lệ hoặc đã hết hạn. Hãy yêu cầu liên kết mới trong Tài khoản của tôi.',
   'error.deleteConfirmMismatch': 'Không khớp. Hãy gõ chính xác địa chỉ email của bạn để xác nhận.',
+  'error.consentRequired': 'Vui lòng đọc và đồng ý Thỏa thuận dữ liệu cá nhân trước.',
+  'error.privacyOutdated': 'Thỏa thuận dữ liệu cá nhân vừa được cập nhật. Hãy tải lại trang và đọc phiên bản mới.',
   'error.treeLimit': 'Bạn chỉ có thể sở hữu tối đa 20 cây. Hãy chuyển giao một cây cho người khác để tạo thêm.',
   'error.branchRootMissing': 'Hãy chọn một người trong cây này làm đầu nhánh.',
   'error.bulkDeleteDisabled': 'Chức năng xóa nhiều người cùng lúc đã bị tắt cho cây gia phả này.',
