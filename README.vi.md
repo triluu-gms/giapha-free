@@ -11,7 +11,7 @@
 - Ai cũng tạo thêm được cây mới (**+ Cây mới…** trong ô chọn cây, tối đa 20 cây làm chủ mỗi tài khoản) và chia sẻ từng cây riêng. Chủ sở hữu xóa được cây ở trang **Cài đặt** sau khi gõ đúng tên cây để xác nhận. Thao tác này xóa người, ảnh, lời mời và quyền truy cập của mọi thành viên. Nếu đó là cây cuối cùng, họ sẽ nhận một cây mới, trống.
 - Cây mới, trống có nút **Thêm gia đình mẫu**: 24 người Việt qua năm đời, để thử ứng dụng trước khi nhập gia đình mình.
 
-> **Không rành kỹ thuật?** Chúng tôi có thể cài đặt giúp bạn một bản riêng trên hosting miễn phí, trọn gói **15 USD** một lần. Xem [Dịch vụ cài đặt](#dịch-vụ-cài-đặt-15-usd).
+> **Không rành kỹ thuật?** Chúng tôi có thể cài đặt giúp bạn một bản riêng trên hosting miễn phí, trọn gói **390.000 VNĐ** một lần. Xem [Dịch vụ cài đặt](#dịch-vụ-cài-đặt-15-usd).
 
 | Phần | Công nghệ | Triển khai lên |
 | --- | --- | --- |
@@ -389,11 +389,11 @@ Mã lỗi:
 - `429`: đăng nhập hoặc đổi mật khẩu quá nhiều lần, hoặc gửi lại email xác minh quá nhanh.
 - `502`: không gửi được email.
 
-## Dịch vụ cài đặt (15 USD)
+## Dịch vụ cài đặt (390.000 VND)
 
 Các bước 1–6 bên dưới dành cho người quen dùng công cụ lập trình. Nếu bạn không rành kỹ thuật, chúng tôi có thể cài đặt toàn bộ giúp bạn, để gia đình bạn có một bản ứng dụng riêng, chạy trên hosting miễn phí.
 
-**Giá:** **15 USD**, trả một lần, cho một môi trường mới (một trang web cho gia đình bạn).
+**Giá:** **390.000 VND**, trả một lần, cho một môi trường mới (một trang web cho gia đình bạn).
 
 **Bao gồm:**
 
