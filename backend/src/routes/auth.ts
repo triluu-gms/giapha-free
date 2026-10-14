@@ -7,9 +7,15 @@ import { getProvider, getProviders } from '../auth/providers';
 import { assertLoginAllowed, clearLoginFailures, recordLoginFailure } from '../auth/rateLimit';
 import { signAccessToken, signOAuthState, verifyOAuthState } from '../auth/tokens';
 import {
+  cancelEmailChange,
   changePassword,
+  confirmEmailChange,
   createPasswordUser,
+  deleteUser,
   findPasswordCredentials,
+  findUserById,
+  requestEmailChange,
+  type AuthUser,
   issuePasswordResetToken,
   issueVerificationToken,
   lastVerificationSentAt,
@@ -21,10 +27,12 @@ import {
 } from '../auth/users';
 import { config } from '../config';
 import { sendEmail } from '../email/mailer';
-import { passwordResetEmail, verificationEmail } from '../email/templates';
+import { emailChangeEmail, emailChangeNoticeEmail, passwordResetEmail, verificationEmail } from '../email/templates';
 import { HttpError, notFound } from '../errors';
 import {
   changePasswordSchema,
+  deleteAccountSchema,
+  emailChangeSchema,
   forgotPasswordSchema,
   passwordLoginSchema,
   profileUpdateSchema,
@@ -254,6 +262,84 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
   if (!updated) throw notFound('User');
   setSessionCookie(req, res, signAccessToken(user.id));
   res.json(updated);
+});
+
+/**
+ * Sensitive account changes ask for the current password again (when the account
+ * has one), so a session left open on someone else's device isn't enough.
+ * Wrong guesses count towards the same limit as sign-in.
+ */
+async function assertCurrentPassword(user: AuthUser, password: string | undefined, action: string) {
+  if (!user.hasPassword) return;
+  const limitKey = `${action}|${user.id}`;
+  assertLoginAllowed(limitKey);
+  const credentials = user.email ? await findPasswordCredentials(user.email) : null;
+  if (!password || !credentials?.passwordHash || !(await verifyPassword(password, credentials.passwordHash))) {
+    recordLoginFailure(limitKey);
+    throw new HttpError(400, 'Your current password is incorrect', 'wrongPassword');
+  }
+  clearLoginFailures(limitKey);
+}
+
+// POST /api/auth/email { email, password? } -> emails a confirmation link to the new
+// address; the account keeps its old email until that link is clicked. The old
+// address is told, so a change nobody asked for doesn't go unnoticed.
+authRouter.post('/email', requireAuth, async (req, res) => {
+  const { email, password } = emailChangeSchema.parse(req.body);
+  const user = req.user!;
+  if (email === user.email) throw new HttpError(400, 'That is already your email address', 'sameEmail');
+  await assertCurrentPassword(user, password, 'email');
+
+  const { token, user: current } = await requestEmailChange(user.id, email, RESEND_COOLDOWN_MS);
+  try {
+    await sendEmail(
+      emailChangeEmail(email, current.name, `${config.auth.publicAppUrl}/confirm-email?token=${encodeURIComponent(token)}`),
+    );
+  } catch (err) {
+    console.error('Failed to send email change confirmation:', err);
+    throw new HttpError(502, 'The confirmation email could not be sent. Please try again later.');
+  }
+  if (current.email) {
+    await sendEmail(emailChangeNoticeEmail(current.email, current.name, email, `${config.auth.publicAppUrl}/account`)).catch(
+      (err) => console.error('Failed to send email change notice:', err), // the change itself is still safe
+    );
+  }
+  res.json(await findUserById(user.id));
+});
+
+// POST /api/auth/email/confirm { token } -> the new address becomes the account's email.
+// No session needed: the link may be opened on another device, and it proves itself.
+authRouter.post('/email/confirm', async (req, res) => {
+  const { token } = tokenSchema.parse(req.body);
+  const user = await confirmEmailChange(token);
+  if (!user) {
+    throw new HttpError(400, 'This confirmation link is invalid or has expired. Ask for a new one on My account.', 'emailLinkExpired');
+  }
+  res.json({ email: user.email });
+});
+
+// DELETE /api/auth/email -> cancels a pending email change
+authRouter.delete('/email', requireAuth, async (req, res) => {
+  res.json(await cancelEmailChange(req.user!.id));
+});
+
+// POST /api/auth/delete-account { password? | confirm? } -> deletes the account and every
+// tree it owns (with their people, photos and invitations), and signs out. Accounts
+// with a password confirm with it; Google/GitHub-only accounts type their email.
+authRouter.post('/delete-account', requireAuth, async (req, res) => {
+  const { password, confirm } = deleteAccountSchema.parse(req.body);
+  const user = req.user!;
+  if (user.hasPassword) {
+    await assertCurrentPassword(user, password, 'delete');
+  } else {
+    const expected = (user.email ?? user.name ?? '').trim().toLowerCase();
+    if (!confirm || confirm.toLowerCase() !== expected) {
+      throw new HttpError(400, 'Type your email address exactly to confirm', 'deleteConfirmMismatch');
+    }
+  }
+  await deleteUser(user.id);
+  clearSessionCookie(req, res);
+  res.status(204).end();
 });
 
 // GET /api/auth/me -> the signed-in user

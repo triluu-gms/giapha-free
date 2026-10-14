@@ -170,6 +170,21 @@ export const resetPasswordSchema = z.object({
   password: newPassword,
 });
 
+/** POST /auth/email: the new address, and the current password for accounts that have one. */
+export const emailChangeSchema = z.object({
+  email,
+  password: z.string().max(128).optional(),
+});
+
+/**
+ * POST /auth/delete-account: the current password, or (accounts that sign in with
+ * Google/GitHub only) the account's email typed out, to make sure.
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().max(128).optional(),
+  confirm: z.string().trim().max(254).optional(),
+});
+
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required').max(128),
   newPassword,

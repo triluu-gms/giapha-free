@@ -115,6 +115,16 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
 
+  /** Emails a confirmation link to the new address; the account keeps its email until it's clicked. */
+  requestEmailChange: (email: string, password?: string) =>
+    request<User>('/api/auth/email', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  confirmEmailChange: (token: string) =>
+    request<{ email: string }>('/api/auth/email/confirm', { method: 'POST', body: JSON.stringify({ token }) }),
+  cancelEmailChange: () => request<User>('/api/auth/email', { method: 'DELETE' }),
+  /** Deletes the account and the trees it owns. Confirm with the password, or (no password) the email typed out. */
+  deleteAccount: (proof: { password?: string; confirm?: string }) =>
+    request<void>('/api/auth/delete-account', { method: 'POST', body: JSON.stringify(proof) }),
+
   /** Death anniversary reminder emails: the switch, how early, and who for. */
   reminderPreferences: () => request<ReminderPreferences>('/api/auth/reminders'),
   updateReminderPreferences: (changes: { enabled?: boolean; daysBefore?: number }) =>

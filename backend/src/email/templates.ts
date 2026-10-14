@@ -47,6 +47,39 @@ export function passwordResetEmail(to: string, name: string | null, url: string)
   };
 }
 
+/** To the new address: the link that makes it the account's email. */
+export function emailChangeEmail(to: string, name: string | null, url: string): EmailMessage {
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  return {
+    to,
+    subject: 'Confirm your new email for Family Tree',
+    html: layout(
+      'Confirm your new email',
+      [greeting, `Someone (hopefully you) asked to use <strong>${escapeHtml(to)}</strong> for their Family Tree account. Click below to confirm.`],
+      { label: 'Confirm new email', url },
+      "This link expires in 24 hours. Until it's confirmed, the account keeps its old email. If you didn't ask for this, you can ignore this email.",
+    ),
+    text: `${name ? `Hi ${name},` : 'Hi,'}\n\nSomeone (hopefully you) asked to use ${to} for their Family Tree account. Confirm it here:\n${url}\n\nThis link expires in 24 hours. If you didn't ask for this, ignore this email.`,
+  };
+}
+
+/** To the old address: a heads-up, so a change nobody asked for doesn't go unnoticed. */
+export function emailChangeNoticeEmail(to: string, name: string | null, newEmail: string, accountUrl: string): EmailMessage {
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const what = `Someone asked to change the email of your Family Tree account to <strong>${escapeHtml(newEmail)}</strong>. It changes only once that address confirms it.`;
+  return {
+    to,
+    subject: 'Your Family Tree email is being changed',
+    html: layout(
+      'Email change requested',
+      [greeting, what, "If this was you, there's nothing to do. If it wasn't, sign in, cancel the change on My account and change your password."],
+      { label: 'Open My account', url: accountUrl },
+      'You get this email because it is the address on the account right now.',
+    ),
+    text: `${name ? `Hi ${name},` : 'Hi,'}\n\nSomeone asked to change the email of your Family Tree account to ${newEmail}. It changes only once that address confirms it.\n\nIf it wasn't you, sign in, cancel the change on My account and change your password:\n${accountUrl}`,
+  };
+}
+
 export interface AnniversaryItem {
   personName: string;
   treeName: string;

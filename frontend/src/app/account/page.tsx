@@ -1,9 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
+import Icon from '@/components/Icon';
 import RequireAuth from '@/components/RequireAuth';
+import { useTrees } from '@/components/TreeProvider';
 import { api, treeApi } from '@/lib/api';
 import type { ReminderPreferences } from '@/lib/types';
 
@@ -245,6 +248,179 @@ function Reminders({ email }: { email: string | null }) {
   );
 }
 
+/**
+ * Changing the account's email: a confirmation link goes to the new address, and
+ * the old one stays until it's clicked. The current password is asked again.
+ */
+function ChangeEmail() {
+  const { user, refreshUser } = useAuth();
+  const { t, tx, errorMessage } = useI18n();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
+  if (!user) return null;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const address = email.trim();
+    setBusy(true);
+    setNotice(null);
+    try {
+      await api.requestEmailChange(address, user!.hasPassword ? password : undefined);
+      await refreshUser(); // shows the pending address
+      setEmail('');
+      setPassword('');
+      setNotice({ text: t('emailChange.sent', { email: address }) });
+    } catch (err) {
+      setNotice({ text: errorMessage(err), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel() {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await api.cancelEmailChange();
+      await refreshUser();
+    } catch (err) {
+      setNotice({ text: errorMessage(err), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card account-card">
+      <h2>{t('emailChange.title')}</h2>
+      <p className="muted small">
+        {tx('emailChange.current', { email: <strong>{user.email ?? t('emailChange.none')}</strong> })}
+      </p>
+      {user.pendingEmail && (
+        <div className="callout">
+          <span>{tx('emailChange.pending', { email: <strong>{user.pendingEmail}</strong> })}</span>
+          <button type="button" className="btn small ghost" onClick={() => void cancel()} disabled={busy}>
+            {t('emailChange.cancel')}
+          </button>
+        </div>
+      )}
+      <form className="form" onSubmit={submit}>
+        <label>
+          {t('emailChange.newEmail')}
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" maxLength={254} required />
+        </label>
+        {user.hasPassword && (
+          <label>
+            {t('account.currentPassword')}
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              maxLength={128}
+              required
+            />
+          </label>
+        )}
+        {notice && <p className={notice.error ? 'error' : 'success'}>{notice.text}</p>}
+        <button type="submit" className="btn primary block" disabled={busy}>
+          {busy ? t('verify.sending') : t('emailChange.submit')}
+        </button>
+      </form>
+      <p className="muted small">{t('emailChange.hint')}</p>
+    </section>
+  );
+}
+
+/**
+ * Deleting the account, and with it every tree it owns. Lists the owned trees other
+ * people use, so they can be handed over first. Confirmed with the password, or
+ * (Google/GitHub accounts) by typing the email.
+ */
+function DeleteAccount() {
+  const { user } = useAuth();
+  const { trees } = useTrees();
+  const { t, tx, errorMessage } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [proof, setProof] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!user) return null;
+
+  const owned = trees.filter((tr) => tr.role === 'owner');
+  const shared = owned.filter((tr) => tr.memberCount > 1);
+  const confirmWith = user.email ?? user.name ?? '';
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteAccount(user!.hasPassword ? { password: proof } : { confirm: proof });
+      // A full reload clears everything this browser held for the account.
+      window.location.href = '/login';
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card account-card danger-zone">
+      <h2>{t('deleteAccount.title')}</h2>
+      <p className="muted small">{t('deleteAccount.hint', { count: owned.length })}</p>
+      {shared.length > 0 && (
+        <div className="callout warning">
+          <p>{t('deleteAccount.sharedWarning')}</p>
+          <ul>
+            {shared.map((tr) => (
+              <li key={tr.id}>
+                <strong>{tr.name}</strong> · {t('deleteAccount.otherMembers', { count: tr.memberCount - 1 })}
+              </li>
+            ))}
+          </ul>
+          <p className="small">
+            {tx('deleteAccount.handOver', { share: <Link href="/share">{t('nav.share')}</Link> })}
+          </p>
+        </div>
+      )}
+      {!open ? (
+        <button type="button" className="btn danger" onClick={() => setOpen(true)}>
+          <Icon name="trash" />
+          {t('deleteAccount.start')}
+        </button>
+      ) : (
+        <form className="form" onSubmit={submit}>
+          <label>
+            {user.hasPassword ? t('account.currentPassword') : t('deleteAccount.typeEmail', { email: confirmWith })}
+            <input
+              type={user.hasPassword ? 'password' : 'text'}
+              value={proof}
+              onChange={(e) => setProof(e.target.value)}
+              autoComplete={user.hasPassword ? 'current-password' : 'off'}
+              maxLength={254}
+              required
+              autoFocus
+            />
+          </label>
+          {error && <p className="error">{error}</p>}
+          <div className="actions">
+            <button type="submit" className="btn danger" disabled={busy}>
+              <Icon name="trash" />
+              {busy ? t('deleteAccount.deleting') : t('deleteAccount.submit')}
+            </button>
+            <button type="button" className="btn" onClick={() => setOpen(false)} disabled={busy}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function Account() {
   const { user } = useAuth();
   const { t, tx } = useI18n();
@@ -258,7 +434,9 @@ function Account() {
         <h2>{t('account.changePassword')}</h2>
         {user.hasPassword ? <ChangePasswordForm /> : <AddPassword email={user.email} />}
       </section>
+      <ChangeEmail />
       <Reminders email={user.email} />
+      <DeleteAccount />
     </div>
   );
 }

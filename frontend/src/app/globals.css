@@ -1435,6 +1435,32 @@ tr.row-pending td {
   padding: 16px;
   margin-bottom: 16px;
 }
+/* A short note inside a card: a pending change, or a warning before something drastic */
+.callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  font-size: 14px;
+}
+.callout.warning {
+  display: block;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+.callout.warning p {
+  margin: 0 0 6px;
+}
+.callout.warning ul {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
 .card.danger-zone {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
 }

@@ -1,4 +1,6 @@
-# Family Tree
+# Family Tree FREE and Open Source
+
+**English** | [Tiếng Việt](README.vi.md)
 
 A family tree app with a graph database behind it.
 
@@ -209,6 +211,13 @@ Details:
 - **Change password:** clicking your name in the header opens **My account** (`/account`). `POST /api/auth/change-password { currentPassword, newPassword }` needs the current password (10 wrong tries block it for 15 minutes).
 - **Other sessions:** resetting or changing the password stores `passwordChangedAt`, and sessions issued before it get `401`. The browser that made the change gets a fresh cookie and stays signed in.
 
+### Change email and delete the account
+
+Both are on **My account** (`/account`), and accounts with a password confirm with it again (wrong tries count towards the same limit as sign-in).
+
+- **Change email:** `POST /api/auth/email { email, password? }` stores the address as *pending* and emails a link to it: `<PUBLIC_APP_URL>/confirm-email?token=…`, valid for 24 hours. The old address gets a notice, so a stolen session can't quietly redirect the account. Clicking the link (`POST /api/auth/email/confirm { token }`, no session needed) makes it the account's verified email. Until then, the old email keeps working and `GET /api/auth/me` shows `pendingEmail`. `DELETE /api/auth/email` cancels. An address used by another account is refused (`409`, `emailTaken`), and a new link can be requested once a minute. Trees, memberships, reminders and Google/GitHub sign-in are tied to the account, not the address, so they all follow.
+- **Delete account:** `POST /api/auth/delete-account` with `{ password }`, or `{ confirm: "<the account's email>" }` for Google/GitHub-only accounts. It deletes the account, its sign-in links and every tree it owns (people, photos, invitations), removes its memberships of other trees and its reminders, and signs out. The page lists the owned trees that other people use, and suggests handing them over with **Make owner** first.
+
 ### Google and GitHub
 
 The backend runs the OAuth flow itself, so no third-party auth service is involved. Provider-verified emails count as verified. Signing in and registering are the same flow.
@@ -316,6 +325,9 @@ Signed in:
 | PATCH | `/api/auth/me` | — | `{ name }`. Change your own display name |
 | GET / PATCH | `/api/auth/reminders` | — | Death anniversary reminder preferences: `{ enabled, daysBefore, people }`. PATCH takes `{ enabled?, daysBefore? }` (0–30) and remembers the UI language for the emails |
 | POST | `/api/auth/change-password` | — | `{ currentPassword, newPassword }`. Signs out other sessions |
+| POST / DELETE | `/api/auth/email` | — | POST `{ email, password? }`: emails a confirmation link to the new address (and a notice to the old one). DELETE cancels a pending change |
+| POST | `/api/auth/email/confirm` | public | `{ token }` from the link: the new address becomes the account's email |
+| POST | `/api/auth/delete-account` | — | `{ password }` or, without a password, `{ confirm: email }`. Deletes the account and the trees it owns, then signs out |
 | POST | `/api/auth/resend-verification` | — | Emails a fresh verification link |
 | POST | `/api/invitations/accept` | — | `{ token }`. Accept from the emailed link (also verifies a matching unverified email) |
 | GET | `/api/invitations/mine` | verified | Pending invitations for my email |
@@ -449,7 +461,7 @@ Open <http://localhost:3000> (not port 4000) and click **Register**. Without Res
 - Creates a private tree for each existing user and moves their people into it.
 - Removes the old account roles (`admin`, `user`, …); only per-tree roles remain.
 - Marks existing social-login emails as verified.
-- Adds the indexes for uploaded photos.
+- Adds the indexes for uploaded photos and email changes.
 - Removes the old app-wide `(:Settings)` node; settings are now stored per tree.
 
 Accounts registered earlier with email and password will be asked to verify their email the next time they sign in.
@@ -509,5 +521,3 @@ You can also deploy from the CLI: `npm i -g vercel`, then run `vercel` inside ea
 - Signing out clears the cookie in that browser. Changing or resetting the password signs the account out everywhere else. To cut someone off from your tree, remove them on **Share**.
 - The Neo4j driver is a singleton that warm serverless invocations reuse.
 - `npm run build && npm start` in `backend/` runs the API as a normal Node server, for example on Render, Railway or Fly.io.
-"# giapha-free" 
-# giapha-free

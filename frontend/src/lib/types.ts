@@ -151,6 +151,8 @@ export interface User {
   avatarUrl: string | null;
   createdAt: string;
   lastLoginAt: string;
+  /** A new email waiting to be confirmed from the link sent to it. */
+  pendingEmail: string | null;
 }
 
 export interface AuthProviderInfo {

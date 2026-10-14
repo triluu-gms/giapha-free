@@ -21,18 +21,22 @@ export interface AuthUser {
   avatarUrl: string | null;
   createdAt: string;
   lastLoginAt: string;
+  /** A new email waiting for its confirmation link to be clicked (still unexpired). */
+  pendingEmail: string | null;
 }
 
 type UserRow = { user: AuthUser };
 
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Explicit projection: passwordHash and token hashes never leave the database layer.
 const USER_FIELDS = `.id, .email, .name, .avatarUrl, .createdAt, .lastLoginAt,
   emailVerified: coalesce(u.emailVerified, u.email IS NOT NULL),
   verificationRequired: u.passwordHash IS NOT NULL AND NOT coalesce(u.emailVerified, false),
-  hasPassword: u.passwordHash IS NOT NULL`;
+  hasPassword: u.passwordHash IS NOT NULL,
+  pendingEmail: CASE WHEN datetime(u.pendingEmailExpiresAt) > datetime() THEN u.pendingEmail END`;
 
 // Every account gets a private tree it owns.
 const CREATE_PERSONAL_TREE = `
@@ -288,6 +292,87 @@ export async function changePassword(userId: string, passwordHash: string): Prom
      REMOVE u.resetTokenHash, u.resetTokenExpiresAt, u.resetSentAt
      RETURN u {${USER_FIELDS}} AS user`,
     { id: userId, passwordHash, changedAt: passwordChangeTime() },
+    'WRITE',
+  );
+  return row?.user ?? null;
+}
+
+// ---------- Changing the email ----------
+
+const emailTaken = () =>
+  new HttpError(409, 'Another account already uses this email address', 'emailTaken');
+
+/**
+ * Starts changing the account's email: the new address must confirm it with the
+ * returned link token before it replaces the old one (proving the user owns it).
+ * Asking again replaces the pending request. Refused while a link was sent less
+ * than `cooldownMs` ago, so the form can't be used to flood someone's inbox.
+ */
+export async function requestEmailChange(
+  userId: string,
+  newEmail: string,
+  cooldownMs: number,
+): Promise<{ token: string; user: { email: string | null; name: string | null } }> {
+  const [taken] = await query('MATCH (u:User {email: $email}) WHERE u.id <> $userId RETURN 1 AS found', {
+    email: newEmail,
+    userId,
+  });
+  if (taken) throw emailTaken();
+  const { token, hash } = createLinkToken();
+  const now = Date.now();
+  const [row] = await query<{ email: string | null; name: string | null }>(
+    `MATCH (u:User {id: $userId})
+     WHERE coalesce(u.emailChangeSentAt, '') < $cooldownStart
+     SET u.pendingEmail = $email, u.pendingEmailTokenHash = $hash,
+         u.pendingEmailExpiresAt = $expiresAt, u.emailChangeSentAt = $now
+     RETURN u.email AS email, u.name AS name`,
+    {
+      userId,
+      email: newEmail,
+      hash,
+      cooldownStart: new Date(now - cooldownMs).toISOString(),
+      expiresAt: new Date(now + EMAIL_CHANGE_TTL_MS).toISOString(),
+      now: new Date(now).toISOString(),
+    },
+    'WRITE',
+  );
+  if (!row) {
+    throw new HttpError(429, 'A confirmation email was sent less than a minute ago. Please check that inbox.', 'emailChangeCooldown');
+  }
+  return { token, user: row };
+}
+
+/**
+ * Confirms a new email from its link: it becomes the account's (verified) email.
+ * Returns null when the link is invalid or expired.
+ */
+export async function confirmEmailChange(token: string): Promise<AuthUser | null> {
+  try {
+    const [row] = await query<UserRow>(
+      `MATCH (u:User {pendingEmailTokenHash: $hash})
+       WHERE u.pendingEmailExpiresAt > $now
+       SET u.email = u.pendingEmail, u.emailVerified = true
+       REMOVE u.pendingEmail, u.pendingEmailTokenHash, u.pendingEmailExpiresAt, u.emailChangeSentAt,
+              u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt
+       RETURN u {${USER_FIELDS}} AS user`,
+      { hash: hashLinkToken(token), now: new Date().toISOString() },
+      'WRITE',
+    );
+    return row?.user ?? null;
+  } catch (err) {
+    // Someone else registered that address in the meantime (unique email constraint).
+    if ((err as { code?: string }).code === 'Neo.ClientError.Schema.ConstraintValidationFailed') throw emailTaken();
+    throw err;
+  }
+}
+
+/** Drops a pending email change (the old email stays). */
+export async function cancelEmailChange(userId: string): Promise<AuthUser | null> {
+  const [row] = await query<UserRow>(
+    `MATCH (u:User {id: $userId})
+     REMOVE u.pendingEmail, u.pendingEmailTokenHash, u.pendingEmailExpiresAt, u.emailChangeSentAt
+     RETURN u {${USER_FIELDS}} AS user`,
+    { userId },
     'WRITE',
   );
   return row?.user ?? null;

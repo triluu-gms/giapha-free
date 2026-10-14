@@ -11,6 +11,7 @@ const schema = [
   'CREATE CONSTRAINT user_email_unique IF NOT EXISTS FOR (u:User) REQUIRE u.email IS UNIQUE',
   'CREATE INDEX user_verify_token IF NOT EXISTS FOR (u:User) ON (u.verifyTokenHash)',
   'CREATE INDEX user_reset_token IF NOT EXISTS FOR (u:User) ON (u.resetTokenHash)',
+  'CREATE INDEX user_pending_email_token IF NOT EXISTS FOR (u:User) ON (u.pendingEmailTokenHash)',
   'CREATE CONSTRAINT account_unique IF NOT EXISTS FOR (a:Account) REQUIRE (a.provider, a.providerAccountId) IS UNIQUE',
   'CREATE CONSTRAINT invitation_id_unique IF NOT EXISTS FOR (i:Invitation) REQUIRE i.id IS UNIQUE',
   'CREATE INDEX invitation_token IF NOT EXISTS FOR (i:Invitation) ON (i.tokenHash)',
