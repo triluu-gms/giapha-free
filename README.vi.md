@@ -11,6 +11,8 @@
 - Ai cũng tạo thêm được cây mới (**+ Cây mới…** trong ô chọn cây, tối đa 20 cây làm chủ mỗi tài khoản) và chia sẻ từng cây riêng. Chủ sở hữu xóa được cây ở trang **Cài đặt** sau khi gõ đúng tên cây để xác nhận. Thao tác này xóa người, ảnh, lời mời và quyền truy cập của mọi thành viên. Nếu đó là cây cuối cùng, họ sẽ nhận một cây mới, trống.
 - Cây mới, trống có nút **Thêm gia đình mẫu**: 24 người Việt qua năm đời, để thử ứng dụng trước khi nhập gia đình mình.
 
+> **Không rành kỹ thuật?** Chúng tôi có thể cài đặt giúp bạn một bản riêng trên hosting miễn phí, trọn gói **15 USD** một lần. Xem [Dịch vụ cài đặt](#dịch-vụ-cài-đặt-15-usd).
+
 | Phần | Công nghệ | Triển khai lên |
 | --- | --- | --- |
 | [`backend/`](backend) | Node.js, Express 5, TypeScript, `neo4j-driver`, Zod, JWT | Vercel (serverless function) hoặc máy chủ Node bất kỳ |
@@ -386,6 +388,38 @@ Mã lỗi:
 - `410`: lời mời đã hết hạn.
 - `429`: đăng nhập hoặc đổi mật khẩu quá nhiều lần, hoặc gửi lại email xác minh quá nhanh.
 - `502`: không gửi được email.
+
+## Dịch vụ cài đặt (15 USD)
+
+Các bước 1–6 bên dưới dành cho người quen dùng công cụ lập trình. Nếu bạn không rành kỹ thuật, chúng tôi có thể cài đặt toàn bộ giúp bạn, để gia đình bạn có một bản ứng dụng riêng, chạy trên hosting miễn phí.
+
+**Giá:** **15 USD**, trả một lần, cho một môi trường mới (một trang web cho gia đình bạn).
+
+**Bao gồm:**
+
+- Tạo các tài khoản **đứng tên bạn**: Neo4j **AuraDB Free** (cơ sở dữ liệu), **Vercel Hobby** (hosting miễn phí cho trang web và API), và **Resend** (gói miễn phí để gửi email đăng ký, lời mời, nhắc ngày giỗ).
+- Triển khai ứng dụng, kết nối cơ sở dữ liệu, và cài các tác vụ chạy hằng ngày (giữ cơ sở dữ liệu hoạt động và gửi email nhắc ngày giỗ).
+- Điền thông tin của bạn vào [Thỏa thuận dữ liệu cá nhân](#thỏa-thuận-dữ-liệu-cá-nhân-luật-bảo-vệ-dữ-liệu-cá-nhân-912025qh15): tên bạn là người vận hành trang, và email liên hệ của bạn.
+- Tùy chọn: đăng nhập bằng Google và lưu ảnh tải lên vào Google Drive của bạn.
+- Kiểm tra đăng ký, xác minh email, lời mời và cây gia phả đều hoạt động, rồi hướng dẫn ngắn cách dùng ứng dụng và mời người thân.
+
+**Không bao gồm:**
+
+- **Tên miền riêng:** địa chỉ như `giaphahonguyen.vn` tốn thêm phí và do bạn tự mua. Nếu không có, trang dùng địa chỉ miễn phí dạng `gia-dinh-ban.vercel.app`.
+- Nhập dữ liệu gia đình, nâng cấp về sau và hỗ trợ lâu dài. Có thể thỏa thuận riêng.
+- Các gói trả phí, nếu gia đình bạn dùng vượt mức miễn phí.
+
+**Bạn cần chuẩn bị:** một địa chỉ email của bạn (Gmail là được), truy cập được email đó trong lúc cài đặt để xác nhận các tài khoản mới, và khoảng 30 phút cho buổi hướng dẫn.
+
+**Lưu ý về các gói miễn phí** (tại thời điểm viết; nhà cung cấp có thể thay đổi):
+
+- **AuraDB Free** dư sức cho một cây gia phả vài nghìn người. Tác vụ hằng ngày của ứng dụng giữ cho cơ sở dữ liệu không bị tạm dừng vì không hoạt động.
+- **Vercel Hobby** dành cho mục đích cá nhân, phi thương mại, phù hợp với trang web gia đình.
+- **Gói miễn phí của Resend** giới hạn số email mỗi ngày và mỗi tháng, đủ dùng cho một gia đình.
+
+**Dữ liệu vẫn là của bạn.** Mọi tài khoản đều đứng tên bạn và được bàn giao cho bạn khi xong, kèm mật khẩu. Chúng tôi không giữ quyền truy cập sau đó. Bạn là người vận hành trang và là bên kiểm soát dữ liệu theo Luật 91/2025/QH15.
+
+**Cách đặt dịch vụ:** [gửi yêu cầu trên GitHub](https://github.com/triluu-gms/giapha-free/issues/new?title=Setup%20service%20request) kèm tên của bạn, tên muốn đặt cho trang, và ngôn ngữ bạn muốn dùng (Tiếng Việt hoặc English). Chúng tôi sẽ trả lời kèm thông tin thanh toán và hẹn thời gian cài đặt.
 
 ## 1. Tạo instance AuraDB
 

@@ -11,6 +11,8 @@ A family tree app with a graph database behind it.
 - Anyone can create more trees (**+ New tree…** in the tree switcher, up to 20 owned trees per account) and share each one separately. The owner can delete a tree on **Settings** after typing its name to confirm. That removes its people, photos, invitations and every member's access. If it was their last tree, they get a new, empty one.
 - A new, empty tree offers **Load sample family**: 24 Vietnamese people over five generations, to try the app before entering your own family.
 
+> **Not technical?** We can set up your own copy for you on free hosting for a one-time **$15**. See [Setup service](#setup-service-15).
+
 | Part | Stack | Deploys to |
 | --- | --- | --- |
 | [`backend/`](backend) | Node.js, Express 5, TypeScript, `neo4j-driver`, Zod, JWT | Vercel (serverless function) or any Node host |
@@ -386,6 +388,38 @@ Error codes:
 - `410`: the invitation has expired.
 - `429`: too many login or change-password attempts, or verification emails resent too quickly.
 - `502`: the email couldn't be sent.
+
+## Setup service ($15)
+
+Steps 1–6 below assume you are comfortable with developer tools. If you aren't, we can do the whole setup for you, so your family gets its own private copy of the app running on free hosting.
+
+**Price:** **$15**, paid once, for one new environment (one website for your family).
+
+**What's included:**
+
+- Creating the accounts in **your name**: Neo4j **AuraDB Free** (database), **Vercel Hobby** (free hosting for the website and API), and **Resend** (free plan for sign-up, invitation and reminder emails).
+- Deploying the app, connecting the database, and setting up the daily jobs (database keep-alive and ngày giỗ reminder emails).
+- Filling in your details in the [personal data agreement](#personal-data-agreement-luật-bảo-vệ-dữ-liệu-cá-nhân-912025qh15): your name as the site's operator and your contact email.
+- Optional: Google sign-in and photo uploads to your Google Drive.
+- Checking that registering, email verification, invitations and the family tree all work, then a short walkthrough of how to use the app and invite relatives.
+
+**Not included:**
+
+- **A custom domain:** a web address like `giaphahonguyen.vn` costs extra and is bought by you. Without one, the site gets a free address like `your-family.vercel.app`.
+- Entering your family data, later upgrades, and ongoing support. These can be agreed separately.
+- Paid plans, if your family outgrows the free tiers.
+
+**What you need:** an email address you control (Gmail is fine), access to it during the setup to confirm the new accounts, and about 30 minutes for the walkthrough.
+
+**Good to know about the free tiers** (at the time of writing; the providers may change them):
+
+- **AuraDB Free** is plenty for a family tree with thousands of people. The app's daily job keeps it from being paused for inactivity.
+- **Vercel Hobby** is for personal, non-commercial use, which fits a family website.
+- **Resend's free plan** sends a limited number of emails per day and month, which is enough for a family.
+
+**Your data stays yours.** Every account is created in your name and handed over to you at the end, together with the passwords. We don't keep access afterwards. You are the operator of your site and the controller of its data under Luật 91/2025/QH15.
+
+**How to order:** [open a request on GitHub](https://github.com/triluu-gms/giapha-free/issues/new?title=Setup%20service%20request) with your name, the name you'd like for the site, and the language you prefer (English or Tiếng Việt). We'll reply with the payment details and a time for the setup.
 
 ## 1. Create the AuraDB instance
 
