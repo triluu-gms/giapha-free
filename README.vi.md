@@ -33,12 +33,16 @@ Trình duyệt chỉ nói chuyện với tên miền của frontend. Next.js chu
 (:User {id, email, emailVerified, name, avatarUrl, passwordHash?, role, createdAt, lastLoginAt,
         verifyTokenHash?, verifyTokenExpiresAt?, resetTokenHash?, resetTokenExpiresAt?, passwordChangedAt?,
         remindersEnabled?, reminderDaysBefore?, locale?,    // locale: ngôn ngữ của email nhắc ngày giỗ
-        privacyVersion?, privacyAcceptedAt?, privacyWithdrawnAt?})   // thỏa thuận dữ liệu cá nhân đã đồng ý
+        privacyVersion?, privacyAcceptedAt?, privacyWithdrawnAt?,    // thỏa thuận dữ liệu cá nhân đã đồng ý
+        driveRefreshToken?, driveEmail?, driveConnectedAt?})         // Google Drive của họ, để sao lưu (token đã mã hóa)
 (:User)-[:HAS_ACCOUNT]->(:Account {provider, providerAccountId})        // mỗi đăng nhập mạng xã hội đã liên kết một node
 (:User)-[:REMINDS {since, lastSentFor?}]->(:Person)   // gửi email cho tôi trước ngày giỗ của người này
 
-(:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?})
+(:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?,
+        backupFrequency?, backupKeep?, backupUserId?, backupLocale?, backupFolderId?, backupFolderUrl?,
+        backupLastRunAt?, backupLastStatus?, backupLastError?})
     // cài đặt riêng từng cây; thiếu = bật xóa nhiều, 'solar' (thuộc tính cũ `calendar` là giá trị dự phòng cho cả hai)
+    // backup*: lịch sao lưu lên Google Drive (thiếu = tắt)
 (:User)-[:MEMBER_OF {role: 'owner' | 'admin' | 'editor' | 'viewer', since, personId?, scopeRootId?, scopeDepth?}]->(:Tree)
     // personId: "Đây là tôi"; scopeRootId/scopeDepth: người chỉnh sửa giới hạn trong một nhánh (thiếu = cả cây)
 
@@ -145,6 +149,20 @@ Các nút **Tải về: Ảnh / PDF** ở góc trên bên phải của cây lưu
 - **Chữ tiếng Việt:** tiêu đề được vẽ bằng phông chữ của trình duyệt và nhúng vào ảnh, vì phông có sẵn của jsPDF không hiện được dấu tiếng Việt.
 - **PDF:** một trang có kích thước bằng cây. Phóng to trên màn hình, hoặc in với "vừa trang".
 - **Cây lớn:** ảnh bị giới hạn khoảng 16 triệu điểm ảnh để trình duyệt nào (kể cả Safari) cũng tạo được. Vì vậy cây rất lớn sẽ bị thu nhỏ; hãy xem quanh một nhánh để rõ hơn.
+
+## Sao lưu lên Google Drive và xuất dữ liệu
+
+Ở trang **Cài đặt**, chủ sở hữu và quản trị viên của cây có thể lấy dữ liệu của cây ra, và tự động lưu vào Google Drive theo lịch:
+
+- **Tải về:** *Tải về CSV* và *Tải về JSON* (`GET /api/trees/:treeId/export?format=csv|json`).
+  - **CSV:** đúng [mẫu nhập dữ liệu](#nhập-từ-csv-hoặc-excel) theo ngôn ngữ giao diện, UTF-8 có BOM. Mỗi người có một mã ngắn, được dùng trong các cột *Mã cha*, *Mã mẹ* và *Mã vợ/chồng*, nên tệp nhập lại được vào chính cây đó hoặc một cây mới. Ảnh tải lên trở thành đường dẫn đầy đủ, mở được với thành viên của cây.
+  - **JSON:** mọi thứ, kèm mã gốc của ứng dụng (người với mọi trường, `parentOf`, `spouseOf`, cài đặt của cây).
+- **Kết nối Google Drive:** mỗi quản trị viên kết nối **tài khoản Google của chính mình** (`/api/drive/connect`). Ứng dụng chỉ xin quyền `drive.file`, nên chỉ thấy và sửa được thư mục, tệp do nó tạo ra, không bao giờ đụng tới phần còn lại của Drive. Refresh token được lưu trên người dùng, mã hóa AES-256-GCM bằng khóa suy ra từ `JWT_SECRET`. *Ngắt kết nối* sẽ thu hồi token ở phía Google.
+- **Lịch:** *Tắt*, *Chỉ khi tôi bấm "Sao lưu ngay"*, *Hằng ngày*, *Hằng tuần* hoặc *Hằng tháng*, và số bản giữ lại (1–100, mặc định 10). Mỗi lần sao lưu đặt một tệp CSV và một tệp JSON vào thư mục do ứng dụng tạo, *Sao lưu gia phả – {tên cây}* (hoặc *Family tree backups – {tree}*), rồi xóa các bản cũ nhất vượt quá số bản giữ lại. Tệp được nhận diện bằng dấu `appProperties`, nên việc dọn dẹp không bao giờ đụng tới tệp khác.
+- **Drive của ai:** bản sao lưu vào Drive của quản trị viên đã lưu lịch. Nếu một quản trị viên khác lưu lịch, các lần sau sẽ vào Drive của người đó, trong một thư mục mới. Sao lưu không thành công, và *Cài đặt* ghi rõ lý do, khi người đó không còn là chủ sở hữu hay quản trị viên (`backupNotManager`), đã ngắt kết nối (`driveNotConnected`), hoặc đã thu hồi quyền ở Google (`driveAccessLost`).
+- **Khi nào:** các bản sao lưu tới hạn được chạy bởi tác vụ cron giữ AuraDB hoạt động hằng ngày (03:00 UTC, tức 10:00 giờ Việt Nam), vì gói Hobby của Vercel chỉ cho hai cron job. Hằng ngày nghĩa là tối đa một lần mỗi ngày, hằng tuần là mỗi 7 ngày, hằng tháng là mỗi 30 ngày. *Sao lưu ngay* chạy ngay một lần (tối đa mỗi phút một lần).
+
+Mã nguồn: [`backend/src/backups/`](backend/src/backups). Phần cài đặt Google xem ở [bước 3](#3-tạo-ứng-dụng-oauth-tùy-chọn).
 
 ## "Đây là tôi" và cách xem mặc định
 
@@ -346,6 +364,8 @@ Công khai (không cần phiên đăng nhập):
 | POST | `/api/auth/email/confirm` | công khai | `{ token }` từ liên kết: địa chỉ mới trở thành email của tài khoản |
 | POST | `/api/auth/delete-account` | — | `{ password }` hoặc, khi không có mật khẩu, `{ confirm: email }`. Xóa tài khoản và các cây nó làm chủ, rồi đăng xuất |
 | POST | `/api/auth/resend-verification` | — | Gửi email liên kết xác minh mới |
+| GET / DELETE | `/api/drive` | đã xác minh | Kết nối Google Drive của bạn để sao lưu: `{ configured, connection: { email, connectedAt } \| null }`. DELETE ngắt kết nối và thu hồi quyền |
+| GET | `/api/drive/connect?next=` | đã xác minh | Bắt đầu kết nối Google Drive (chuyển trang). Google quay về `/api/drive/callback`, rồi về `next` kèm `?drive=connected` (hoặc `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Chấp nhận từ liên kết trong email (cũng xác minh email chưa xác minh nếu trùng) |
 | GET | `/api/invitations/mine` | đã xác minh | Các lời mời đang chờ gửi tới email của tôi |
 | POST | `/api/invitations/:id/accept` / `decline` | đã xác minh | Trả lời từ dải thông báo trong ứng dụng |
@@ -359,6 +379,9 @@ Công khai (không cần phiên đăng nhập):
 | POST / PATCH / DELETE | `/api/trees/:treeId/persons[/:id]` | editor | Tạo, cập nhật một phần (`null` xóa trường) hoặc xóa một người. POST nhận thêm `link: { relation: "parent" \| "child" \| "spouse", personId }` tùy chọn để thêm người mới làm người thân đó trong cùng giao dịch (bắt buộc với người chỉnh sửa theo nhánh) |
 | POST | `/api/trees/:treeId/persons/merge` | editor | `{ keepId, removeId, fields? }`. Gộp `removeId` vào `keepId` (xem *Gộp người bị trùng*) và trả về người được giữ. `fields` là các giá trị đặt cho người được giữ. Không dành cho người chỉnh sửa theo nhánh |
 | POST | `/api/trees/:treeId/persons/delete` | editor | `{ ids }` (tối đa 1000). Xóa những người đó và quan hệ của họ, trả về `{ deleted }`. `403` (`code: "bulkDeleteDisabled"`) khi cây tắt chức năng xóa nhiều người |
+| GET / PUT | `/api/trees/:treeId/backup` | admin | Lịch sao lưu lên Google Drive và kết quả lần gần nhất. PUT `{ frequency: "off" \| "manual" \| "daily" \| "weekly" \| "monthly", keep? }` gửi bản sao lưu vào Drive đã kết nối của người gọi (`400`, `driveNotConnected`, nếu chưa có) |
+| POST | `/api/trees/:treeId/backup/run` | admin | Sao lưu ngay và trả về kết quả (`409` `backupOff`; `429` `backupTooSoon` nếu chưa đầy một phút từ lần trước) |
+| GET | `/api/trees/:treeId/export?format=csv\|json` | admin | Tải cây về dưới dạng CSV mẫu nhập dữ liệu hoặc tệp JSON đầy đủ |
 | GET | `/api/trees/:treeId/settings` | viewer | Cài đặt của cây: `{ bulkDelete, birthCalendar, deathCalendar }`, lịch là `"solar"` hoặc `"lunisolar"` (cũng có trong `GET /api/trees`) |
 | PATCH | `/api/trees/:treeId/settings` | admin | Đổi cài đặt của cây, ví dụ `{ "deathCalendar": "lunisolar" }`. Các cây khác không bị ảnh hưởng |
 | POST / DELETE | `/api/trees/:treeId/relationships` | editor | `{ type: "PARENT_OF" \| "SPOUSE_OF", fromId, toId }`. DELETE nhận các giá trị này qua query parameter |
@@ -400,7 +423,7 @@ Các bước 1–6 bên dưới dành cho người quen dùng công cụ lập t
 - Tạo các tài khoản **đứng tên bạn**: Neo4j **AuraDB Free** (cơ sở dữ liệu), **Vercel Hobby** (hosting miễn phí cho trang web và API), và **Resend** (gói miễn phí để gửi email đăng ký, lời mời, nhắc ngày giỗ).
 - Triển khai ứng dụng, kết nối cơ sở dữ liệu, và cài các tác vụ chạy hằng ngày (giữ cơ sở dữ liệu hoạt động và gửi email nhắc ngày giỗ).
 - Điền thông tin của bạn vào [Thỏa thuận dữ liệu cá nhân](#thỏa-thuận-dữ-liệu-cá-nhân-luật-bảo-vệ-dữ-liệu-cá-nhân-912025qh15): tên bạn là người vận hành trang, và email liên hệ của bạn.
-- Tùy chọn: đăng nhập bằng Google và lưu ảnh tải lên vào Google Drive của bạn.
+- Tùy chọn: đăng nhập bằng Google, lưu ảnh tải lên vào Google Drive của bạn, và tự động sao lưu cây gia phả lên Google Drive.
 - Kiểm tra đăng ký, xác minh email, lời mời và cây gia phả đều hoạt động, rồi hướng dẫn ngắn cách dùng ứng dụng và mời người thân.
 
 **Không bao gồm:**
@@ -449,6 +472,10 @@ Muốn dùng nhà cung cấp khác (SES, SendGrid, SMTP), chỉ cần sửa [`ba
    - `http://localhost:3000/api/auth/google/callback`
    - `https://<frontend>.vercel.app/api/auth/google/callback`
 4. Chép client ID và secret vào `GOOGLE_CLIENT_ID` và `GOOGLE_CLIENT_SECRET`.
+5. **Để sao lưu lên Google Drive** (tùy chọn; dùng chung client này):
+   - Bật **Google Drive API** cho project (APIs & Services → Library).
+   - Thêm các redirect URI `http://localhost:3000/api/drive/callback` và `https://<frontend>.vercel.app/api/drive/callback`.
+   - Trên consent screen, thêm scope `.../auth/drive.file`. Đây là scope không nhạy cảm. Khi ứng dụng chưa publish, chỉ test user kết nối được và quyền truy cập hết hạn sau 7 ngày. Hãy publish consent screen (**In production**) để kết nối không bị hết hạn. Google có thể hiện cảnh báo "ứng dụng chưa được xác minh" cho tới khi bạn xác minh ứng dụng.
 
 **GitHub**: <https://github.com/settings/developers> → New OAuth App
 
@@ -540,7 +567,7 @@ Tạo **hai project Vercel** từ cùng một Git repository, mỗi project mộ
 
 ### Giữ AuraDB Free luôn hoạt động
 
-AuraDB Free tạm dừng instance không có thao tác ghi trong vài ngày, và xóa nó nếu cứ tạm dừng như vậy. Để tránh điều đó, `vercel.json` lên lịch một tác vụ **Vercel Cron** mỗi ngày lúc 03:00 UTC. Tác vụ gọi `GET /api/cron/keepalive`, ghi một node duy nhất `(:Keepalive {id: 'aura-free', pingedAt, count})`.
+AuraDB Free tạm dừng instance không có thao tác ghi trong vài ngày, và xóa nó nếu cứ tạm dừng như vậy. Để tránh điều đó, `vercel.json` lên lịch một tác vụ **Vercel Cron** mỗi ngày lúc 03:00 UTC. Tác vụ gọi `GET /api/cron/keepalive`, ghi một node duy nhất `(:Keepalive {id: 'aura-free', pingedAt, count})`. Cùng tác vụ đó sau đó chạy các bản [sao lưu lên Google Drive](#sao-lưu-lên-google-drive-và-xuất-dữ-liệu) đã tới hạn, trong tối đa khoảng 40 giây; phần còn lại chạy vào ngày hôm sau.
 
 - **Xác thực:** Vercel gửi `Authorization: Bearer <CRON_SECRET>` và endpoint từ chối mọi thứ khác. Không có `CRON_SECRET` thì nó trả `503` và không ghi gì.
 - **Kiểm tra:** trong project backend, mở **Settings → Cron Jobs** để xem các lần chạy hoặc chạy thử bằng tay. Sau đó chạy `MATCH (k:Keepalive) RETURN k` trong Aura console.

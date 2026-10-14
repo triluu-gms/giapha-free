@@ -160,6 +160,29 @@ export interface User {
   privacyAcceptedAt: string | null;
 }
 
+/** The signed-in user's Google Drive connection, used for tree backups. */
+export interface DriveStatus {
+  /** The server has a Google OAuth client, so Drive can be connected at all. */
+  configured: boolean;
+  connection: { email: string | null; connectedAt: string } | null;
+}
+
+export type BackupFrequency = 'manual' | 'daily' | 'weekly' | 'monthly';
+
+/** A tree's scheduled backup to an admin's Google Drive (backend/src/backups/backups.ts). */
+export interface BackupStatus {
+  frequency: BackupFrequency | 'off';
+  /** How many backups are kept; older ones are deleted from the folder. */
+  keep: number;
+  /** The admin whose Drive receives the backups. */
+  owner: { id: string; name: string | null; driveEmail: string | null } | null;
+  folderUrl: string | null;
+  lastRunAt: string | null;
+  lastStatus: 'ok' | 'error' | null;
+  lastError: 'driveNotConnected' | 'driveAccessLost' | 'backupNotManager' | 'backupFailed' | null;
+  nextRunAt: string | null;
+}
+
 export interface AuthProviderInfo {
   id: string;
   name: string;

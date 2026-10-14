@@ -95,6 +95,7 @@ function vi(): Agreement {
             list: [
               'Cây gia phả chỉ hiển thị cho các thành viên được chủ cây hoặc quản trị viên mời, theo vai trò: chủ sở hữu, quản trị viên, người được chỉnh sửa, người chỉ xem. Không có trang nào công khai cây hay danh sách tài khoản.',
               'Ảnh tải lên được lưu ở chế độ riêng tư và chỉ thành viên của cây mới xem được.',
+              'Chủ sở hữu và quản trị viên của cây có thể tải dữ liệu của cây về máy, hoặc bật sao lưu tự động vào Google Drive của chính họ. Bản sao lưu nằm trong tài khoản Google của người đó và họ chịu trách nhiệm bảo quản theo mục 7.',
               'Các nhà cung cấp dịch vụ xử lý dữ liệu thay mặt bên kiểm soát: Neo4j Aura (cơ sở dữ liệu), Vercel (máy chủ ứng dụng), Resend (gửi email), và nơi lưu ảnh nếu được bật (dịch vụ tương thích Amazon S3 hoặc Google Drive). Khi bạn đăng nhập bằng Google hoặc GitHub, các nhà cung cấp này xử lý việc đăng nhập theo chính sách riêng của họ.',
               'Máy chủ của các nhà cung cấp trên có thể đặt ngoài lãnh thổ Việt Nam. Khi đồng ý Thỏa thuận này, bạn đồng ý việc chuyển dữ liệu cá nhân ra nước ngoài cho các mục đích tại mục 4. Bên kiểm soát thực hiện các nghĩa vụ về chuyển dữ liệu xuyên biên giới theo quy định của pháp luật.',
             ],
@@ -247,6 +248,7 @@ function en(): Agreement {
             list: [
               'A family tree is shown only to members invited by its owner or admins, according to their role: owner, admin, editor, viewer. No page makes trees or the list of accounts public.',
               'Uploaded photos are stored privately and only the tree’s members can view them.',
+              'A tree’s owner and admins can download its data, or turn on automatic backups to their own Google Drive. The backups are in that person’s Google account, and they are responsible for keeping them safe as set out in section 7.',
               'Service providers process data on the controller’s behalf: Neo4j Aura (database), Vercel (application hosting), Resend (email), and photo storage when enabled (an Amazon S3-compatible service or Google Drive). When you sign in with Google or GitHub, they handle the sign-in under their own policies.',
               'These providers’ servers may be outside Vietnam. By accepting this Agreement you consent to your personal data being transferred abroad for the purposes in section 4. The controller carries out its cross-border transfer obligations as the law requires.',
             ],

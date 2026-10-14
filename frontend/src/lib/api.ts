@@ -1,6 +1,9 @@
 import type {
   AuthProviderInfo,
+  BackupFrequency,
+  BackupStatus,
   BranchInfo,
+  DriveStatus,
   EditScopeInput,
   ImportCheck,
   ImportMatches,
@@ -82,7 +85,13 @@ const qs = (params: Record<string, string | number | undefined>) => {
 
 export const api = {
   health: () => request<{ status: string; database: string; error?: string }>('/api/health'),
-  features: () => request<{ photoUploads: boolean }>('/api/features'),
+  features: () => request<{ photoUploads: boolean; driveBackups: boolean }>('/api/features'),
+
+  // ---- The user's own Google Drive (for tree backups) ----
+  driveStatus: () => request<DriveStatus>('/api/drive'),
+  /** Full-page navigation to Google's consent screen; comes back to `next` with ?drive=<result>. */
+  driveConnectUrl: (next: string) => `/api/drive/connect${qs({ next })}`,
+  disconnectDrive: () => request<void>('/api/drive', { method: 'DELETE' }),
 
   // ---- Auth ----
   authProviders: () => request<AuthProviderInfo[]>('/api/auth/providers'),
@@ -242,6 +251,13 @@ export function treeApi(treeId: string) {
     /** Changes this tree's settings (its owner only). Read them from the tree summary. */
     updateSettings: (changes: Partial<TreeSettings>) =>
       request<TreeSettings>(`${base}/settings`, { method: 'PATCH', body: JSON.stringify(changes) }),
+    /** Scheduled backups to an admin's Google Drive. */
+    backupStatus: () => request<BackupStatus>(`${base}/backup`),
+    updateBackup: (changes: { frequency: BackupFrequency | 'off'; keep?: number }) =>
+      request<BackupStatus>(`${base}/backup`, { method: 'PUT', body: JSON.stringify(changes) }),
+    runBackup: () => request<BackupStatus>(`${base}/backup/run`, { method: 'POST' }),
+    /** Same-origin download of the tree as the import CSV or a full JSON file (a plain link, so the browser saves it). */
+    exportUrl: (format: 'csv' | 'json') => `${base}/export?format=${format}`,
     /** Fills the owner's empty tree with a sample Vietnamese family to try the app with. */
     loadSampleFamily: () => request<ImportSummary>(`${base}/sample`, { method: 'POST' }),
   };

@@ -9,6 +9,14 @@ import {
   transferOwnershipSchema,
   treeRenameSchema,
 } from '../schemas';
+import {
+  backupUpdateSchema,
+  getBackupStatus,
+  getDriveConnection,
+  runBackup,
+  updateBackupSchedule,
+} from '../backups/backups';
+import { exportCsv, exportFileStem, exportJson, loadTreeExport } from '../backups/exportTree';
 import { setPersonReminder } from '../reminders/preferences';
 import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/branch';
 import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
@@ -46,6 +54,8 @@ import { relationshipsRouter } from './relationships';
 // Mounted at /api/trees behind requireAuth + requireVerifiedEmail.
 export const treesRouter = Router();
 
+const BACKUP_COOLDOWN_MS = 60 * 1000;
+
 // GET /api/trees -> the user's own trees plus every tree shared with them
 treesRouter.get('/', async (req, res) => {
   await ensurePersonalTree(req.user!, requestLocale(req));
@@ -80,6 +90,45 @@ treesRouter.get('/:treeId/settings', (req, res) => {
 treesRouter.patch('/:treeId/settings', requireTreeManager, async (req, res) => {
   const changes = treeSettingsUpdateSchema.parse(req.body);
   res.json(await updateTreeSettings(currentTreeId(req), changes));
+});
+
+// ---- Backups to Google Drive and downloads: the owner and admins ----
+
+// GET /api/trees/:treeId/backup -> the schedule and how the last backup went
+treesRouter.get('/:treeId/backup', requireTreeManager, async (req, res) => {
+  res.json(await getBackupStatus(currentTreeId(req)));
+});
+
+// PUT /api/trees/:treeId/backup { frequency, keep? } -> backups go to the caller's connected Drive
+treesRouter.put('/:treeId/backup', requireTreeManager, async (req, res) => {
+  const changes = backupUpdateSchema.parse(req.body);
+  if (changes.frequency !== 'off' && !(await getDriveConnection(req.user!.id))) {
+    throw new HttpError(400, 'Connect your Google Drive first', 'driveNotConnected');
+  }
+  res.json(await updateBackupSchedule(currentTreeId(req), req.user!.id, changes, requestLocale(req)));
+});
+
+// POST /api/trees/:treeId/backup/run -> backs up now (at most once a minute)
+treesRouter.post('/:treeId/backup/run', requireTreeManager, async (req, res) => {
+  const treeId = currentTreeId(req);
+  const status = await getBackupStatus(treeId);
+  if (status.frequency === 'off') throw new HttpError(409, 'Turn on backups first', 'backupOff');
+  if (status.lastRunAt && Date.now() - Date.parse(status.lastRunAt) < BACKUP_COOLDOWN_MS) {
+    throw new HttpError(429, 'A backup ran less than a minute ago', 'backupTooSoon');
+  }
+  res.json(await runBackup(treeId));
+});
+
+// GET /api/trees/:treeId/export?format=csv|json -> the same files as a backup, downloaded
+treesRouter.get('/:treeId/export', requireTreeManager, async (req, res) => {
+  const format = req.query.format === 'json' ? 'json' : 'csv';
+  const data = await loadTreeExport(currentTreeId(req));
+  const now = new Date();
+  const stem = exportFileStem(data.tree.name, now);
+  res.setHeader('Content-Disposition', `attachment; filename="${stem}.${format}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  if (format === 'json') res.type('application/json').send(exportJson(data, now.toISOString()));
+  else res.type('text/csv; charset=utf-8').send(exportCsv(data, requestLocale(req)));
 });
 
 // ---- Tree content: viewers read, editors and owners write ----

@@ -33,12 +33,16 @@ The browser only ever talks to the frontend's domain. Next.js forwards `/api/*` 
 (:User {id, email, emailVerified, name, avatarUrl, passwordHash?, role, createdAt, lastLoginAt,
         verifyTokenHash?, verifyTokenExpiresAt?, resetTokenHash?, resetTokenExpiresAt?, passwordChangedAt?,
         remindersEnabled?, reminderDaysBefore?, locale?,    // locale: language of reminder emails
-        privacyVersion?, privacyAcceptedAt?, privacyWithdrawnAt?})   // the personal data agreement accepted
+        privacyVersion?, privacyAcceptedAt?, privacyWithdrawnAt?,    // the personal data agreement accepted
+        driveRefreshToken?, driveEmail?, driveConnectedAt?})         // their Google Drive, for backups (token encrypted)
 (:User)-[:HAS_ACCOUNT]->(:Account {provider, providerAccountId})        // one per linked social login
 (:User)-[:REMINDS {since, lastSentFor?}]->(:Person)   // email me before this person's death anniversary
 
-(:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?})
+(:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?,
+        backupFrequency?, backupKeep?, backupUserId?, backupLocale?, backupFolderId?, backupFolderUrl?,
+        backupLastRunAt?, backupLastStatus?, backupLastError?})
     // per-tree settings; missing = bulk delete on, 'solar' (an older `calendar` property is the fallback for both)
+    // backup*: the Google Drive backup schedule (missing = off)
 (:User)-[:MEMBER_OF {role: 'owner' | 'admin' | 'editor' | 'viewer', since, personId?, scopeRootId?, scopeDepth?}]->(:Tree)
     // personId: "This is me"; scopeRootId/scopeDepth: an editor limited to one branch (missing = whole tree)
 
@@ -145,6 +149,20 @@ The **Download: Image / PDF** buttons in the top-right corner of the tree save t
 - **Vietnamese text:** the title is drawn with the browser's fonts and embedded in the image, because jsPDF's built-in fonts can't show Vietnamese accents.
 - **PDF:** one page the size of the tree. Zoom in on screen, or print with "fit to page".
 - **Large trees:** images are capped at about 16 million pixels so every browser (including Safari) can make them. Very large trees are therefore scaled down; focus on a branch for more detail.
+
+## Backups to Google Drive, and data export
+
+On **Settings**, the owner and admins of a tree can take its data out, and have it saved to Google Drive on a schedule:
+
+- **Download:** *Download CSV* and *Download JSON* (`GET /api/trees/:treeId/export?format=csv|json`).
+  - **CSV:** the [import template](#importing-from-csv-or-excel) in the UI language, with UTF-8 BOM. People get short IDs that the *Father ID*, *Mother ID* and *Spouse IDs* columns use, so the file can be imported again, into the same tree or a new one. Uploaded photos become full links, which work for members of the tree.
+  - **JSON:** everything, with the app's own ids (people with all fields, `parentOf`, `spouseOf`, the tree's settings).
+- **Connect Google Drive:** each admin connects **their own** Google account (`/api/drive/connect`). The app asks only for the `drive.file` scope, so it can see and change only the folders and files it created, never the rest of the Drive. The refresh token is stored on the user, encrypted with AES-256-GCM under a key derived from `JWT_SECRET`. *Disconnect* revokes it at Google.
+- **Schedule:** *Off*, *Only when I click "Back up now"*, *Every day*, *Every week* or *Every month*, and how many backups to keep (1–100, default 10). Each backup puts a CSV and a JSON file into a folder the app creates, *Sao lưu gia phả – {tree}* (or *Family tree backups – {tree}*), then deletes the oldest backups beyond the number to keep. Files are found by an `appProperties` mark, so pruning never touches anything else.
+- **Whose Drive:** backups go to the Drive of the admin who saved the schedule. If another admin saves it, later backups go to that admin's Drive, in a new folder. A backup fails, and *Settings* says why, when that person is no longer an owner or admin (`backupNotManager`), has disconnected (`driveNotConnected`), or revoked access at Google (`driveAccessLost`).
+- **When:** due backups run from the daily keep-alive cron job (03:00 UTC, 10:00 in Vietnam), because Vercel's Hobby plan allows only two cron jobs. Daily means at most once a day, weekly every 7 days, monthly every 30 days. *Back up now* runs one straight away (at most once a minute).
+
+Code: [`backend/src/backups/`](backend/src/backups). For the Google setup, see [step 3](#3-create-the-oauth-apps-optional).
 
 ## "This is me" and the default view
 
@@ -346,6 +364,8 @@ Signed in:
 | POST | `/api/auth/email/confirm` | public | `{ token }` from the link: the new address becomes the account's email |
 | POST | `/api/auth/delete-account` | — | `{ password }` or, without a password, `{ confirm: email }`. Deletes the account and the trees it owns, then signs out |
 | POST | `/api/auth/resend-verification` | — | Emails a fresh verification link |
+| GET / DELETE | `/api/drive` | verified | Your Google Drive connection for backups: `{ configured, connection: { email, connectedAt } \| null }`. DELETE disconnects and revokes it |
+| GET | `/api/drive/connect?next=` | verified | Starts connecting Google Drive (a page navigation). Google returns to `/api/drive/callback`, which goes back to `next` with `?drive=connected` (or `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Accept from the emailed link (also verifies a matching unverified email) |
 | GET | `/api/invitations/mine` | verified | Pending invitations for my email |
 | POST | `/api/invitations/:id/accept` / `decline` | verified | Respond from the in-app banner |
@@ -359,6 +379,9 @@ Signed in:
 | POST / PATCH / DELETE | `/api/trees/:treeId/persons[/:id]` | editor | Create, partially update (`null` clears a field) or delete a person. POST takes an optional `link: { relation: "parent" \| "child" \| "spouse", personId }` to add the new person as that relative in the same transaction (required for branch editors) |
 | POST | `/api/trees/:treeId/persons/merge` | editor | `{ keepId, removeId, fields? }`. Merges `removeId` into `keepId` (see *Merging duplicates*) and returns the kept person. `fields` are the kept person's values to set. Not for branch editors |
 | POST | `/api/trees/:treeId/persons/delete` | editor | `{ ids }` (up to 1000). Deletes those people and their relationships, and returns `{ deleted }`. `403` (`code: "bulkDeleteDisabled"`) when bulk delete is turned off for this tree |
+| GET / PUT | `/api/trees/:treeId/backup` | admin | The Google Drive backup schedule and last result. PUT `{ frequency: "off" \| "manual" \| "daily" \| "weekly" \| "monthly", keep? }` sends backups to the caller's connected Drive (`400`, `driveNotConnected`, if none) |
+| POST | `/api/trees/:treeId/backup/run` | admin | Backs up now and returns the result (`409` `backupOff`; `429` `backupTooSoon` within a minute of the last run) |
+| GET | `/api/trees/:treeId/export?format=csv\|json` | admin | Downloads the tree as the import CSV or a full JSON file |
 | GET | `/api/trees/:treeId/settings` | viewer | This tree's settings: `{ bulkDelete, birthCalendar, deathCalendar }`, the calendars being `"solar"` or `"lunisolar"` (also included in `GET /api/trees`) |
 | PATCH | `/api/trees/:treeId/settings` | admin | Change this tree's settings, e.g. `{ "deathCalendar": "lunisolar" }`. Other trees are not affected |
 | POST / DELETE | `/api/trees/:treeId/relationships` | editor | `{ type: "PARENT_OF" \| "SPOUSE_OF", fromId, toId }`. DELETE takes these as query parameters |
@@ -400,7 +423,7 @@ Steps 1–6 below assume you are comfortable with developer tools. If you aren't
 - Creating the accounts in **your name**: Neo4j **AuraDB Free** (database), **Vercel Hobby** (free hosting for the website and API), and **Resend** (free plan for sign-up, invitation and reminder emails).
 - Deploying the app, connecting the database, and setting up the daily jobs (database keep-alive and ngày giỗ reminder emails).
 - Filling in your details in the [personal data agreement](#personal-data-agreement-luật-bảo-vệ-dữ-liệu-cá-nhân-912025qh15): your name as the site's operator and your contact email.
-- Optional: Google sign-in and photo uploads to your Google Drive.
+- Optional: Google sign-in, photo uploads to your Google Drive, and automatic backups of the family tree to Google Drive.
 - Checking that registering, email verification, invitations and the family tree all work, then a short walkthrough of how to use the app and invite relatives.
 
 **Not included:**
@@ -449,6 +472,10 @@ Email and password registration works without this. Callback URLs point at the *
    - `http://localhost:3000/api/auth/google/callback`
    - `https://<frontend>.vercel.app/api/auth/google/callback`
 4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+5. **For backups to Google Drive** (optional; uses the same client):
+   - Enable the **Google Drive API** for the project (APIs & Services → Library).
+   - Add the redirect URIs `http://localhost:3000/api/drive/callback` and `https://<frontend>.vercel.app/api/drive/callback`.
+   - On the consent screen, add the scope `.../auth/drive.file`. It is a non-sensitive scope. Until the app is published, only its test users can connect, and their access expires after 7 days. Publish the consent screen (**In production**) so connections last. Google may show an "unverified app" warning until you verify the app.
 
 **GitHub**: <https://github.com/settings/developers> → New OAuth App
 
@@ -540,7 +567,7 @@ Create **two Vercel projects** from the same Git repository, one per folder.
 
 ### Keeping AuraDB Free awake
 
-AuraDB Free pauses an instance that has had no writes for a few days, and deletes it if it then stays paused. To prevent that, `vercel.json` schedules a **Vercel Cron** job every day at 03:00 UTC. The job calls `GET /api/cron/keepalive`, which writes a single `(:Keepalive {id: 'aura-free', pingedAt, count})` node.
+AuraDB Free pauses an instance that has had no writes for a few days, and deletes it if it then stays paused. To prevent that, `vercel.json` schedules a **Vercel Cron** job every day at 03:00 UTC. The job calls `GET /api/cron/keepalive`, which writes a single `(:Keepalive {id: 'aura-free', pingedAt, count})` node. The same job then runs the [Google Drive backups](#backups-to-google-drive-and-data-export) that are due, for up to about 40 seconds; any left over run the next day.
 
 - **Auth:** Vercel sends `Authorization: Bearer <CRON_SECRET>` and the endpoint rejects anything else. Without `CRON_SECRET` it answers `503` and writes nothing.
 - **Check it:** in the backend project, open **Settings → Cron Jobs** to see the runs or trigger one by hand. Then run `MATCH (k:Keepalive) RETURN k` in the Aura console.

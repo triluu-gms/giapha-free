@@ -8,8 +8,11 @@ import { requireAuth, requireCsrfHeader, requirePrivacyConsent, requireVerifiedE
 import { config } from './config';
 import { getDriver, query } from './db';
 import { HttpError } from './errors';
+import { runDueBackups } from './backups/backups';
+import { driveConfigured } from './backups/userDrive';
 import { runReminders } from './reminders/run';
 import { authRouter } from './routes/auth';
+import { driveRouter } from './routes/drive';
 import { invitationsRouter } from './routes/invitations';
 import { treesRouter } from './routes/trees';
 
@@ -44,7 +47,7 @@ app.get('/api/health', async (_req, res) => {
 
 // GET /api/features -> optional features this server has configured, so the UI can hide the rest.
 app.get('/api/features', (_req, res) => {
-  res.json({ photoUploads: Boolean(config.photos.storage) });
+  res.json({ photoUploads: Boolean(config.photos.storage), driveBackups: driveConfigured() });
 });
 
 /** Cron endpoints: only Vercel Cron, which sends "Authorization: Bearer <CRON_SECRET>". */
@@ -59,6 +62,8 @@ function assertCronCaller(req: Request) {
 // GET /api/cron/keepalive -> called daily by Vercel Cron (see vercel.json).
 // AuraDB Free pauses an instance after a few days without writes, then deletes
 // it if it stays paused, so this makes a small write every day.
+// It also runs the scheduled Google Drive backups that are due: Vercel's Hobby plan
+// allows only two cron jobs, and both are taken.
 app.get('/api/cron/keepalive', async (req, res) => {
   assertCronCaller(req);
   const [row] = await query<{ pingedAt: string }>(
@@ -68,7 +73,8 @@ app.get('/api/cron/keepalive', async (req, res) => {
     { now: new Date().toISOString() },
     'WRITE',
   );
-  res.json({ status: 'ok', pingedAt: row.pingedAt });
+  const backups = driveConfigured() ? await runDueBackups() : null;
+  res.json({ status: 'ok', pingedAt: row.pingedAt, backups });
 });
 
 // GET /api/cron/reminders -> called daily by Vercel Cron at 07:00 Vietnam time (see vercel.json).
@@ -79,6 +85,8 @@ app.get('/api/cron/reminders', async (req, res) => {
 });
 
 app.use('/api/auth', authRouter);
+// The user's own Google Drive, for tree backups; checks the session inside the router.
+app.use('/api/drive', driveRouter);
 // Preview is public; accepting/declining checks the session inside the router.
 app.use('/api/invitations', invitationsRouter);
 
