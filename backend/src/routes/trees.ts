@@ -1,0 +1,251 @@
+import { Router } from 'express';
+import { requestLocale } from '../auth/cookies';
+import { HttpError, notFound } from '../errors';
+import {
+  importSchema,
+  inviteSchema,
+  linkMeSchema,
+  memberRoleSchema,
+  transferOwnershipSchema,
+  treeRenameSchema,
+} from '../schemas';
+import { setPersonReminder } from '../reminders/preferences';
+import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/branch';
+import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
+import { addSampleFamily } from '../trees/sampleFamily';
+import { treeSettingsUpdateSchema, updateTreeSettings } from '../trees/settings';
+import {
+  assertCanGrant,
+  currentTreeId,
+  editorForWrites,
+  loadTree,
+  manageableRoles,
+  requireTreeManager,
+  requireTreeRole,
+} from '../trees/access';
+import { createInvitation, listInvitations, resendInvitation, revokeInvitation, chargeInviteQuota } from '../trees/invitations';
+import {
+  createTree,
+  deleteTree,
+  ensurePersonalTree,
+  linkMemberToPerson,
+  listMembers,
+  listTrees,
+  MAX_OWNED_TREES,
+  removeMember,
+  renameTree,
+  transferOwnership,
+  unlinkMember,
+  updateMemberRole,
+} from '../trees/trees';
+import { graphRouter } from './graph';
+import { personsRouter } from './persons';
+import { photosRouter } from './photos';
+import { relationshipsRouter } from './relationships';
+
+// Mounted at /api/trees behind requireAuth + requireVerifiedEmail.
+export const treesRouter = Router();
+
+// GET /api/trees -> the user's own trees plus every tree shared with them
+treesRouter.get('/', async (req, res) => {
+  await ensurePersonalTree(req.user!, requestLocale(req));
+  res.json(await listTrees(req.user!.id));
+});
+
+// POST /api/trees { name } -> a new, empty tree owned by the caller
+treesRouter.post('/', async (req, res) => {
+  const { name } = treeRenameSchema.parse(req.body);
+  const id = await createTree(req.user!.id, name);
+  if (!id) {
+    throw new HttpError(409, `You can own at most ${MAX_OWNED_TREES} trees`, 'treeLimit');
+  }
+  const created = (await listTrees(req.user!.id)).find((tree) => tree.id === id);
+  res.status(201).json(created);
+});
+
+// Everything under /:treeId requires membership of that tree.
+treesRouter.use('/:treeId', loadTree);
+
+treesRouter.patch('/:treeId', requireTreeManager, async (req, res) => {
+  const { name } = treeRenameSchema.parse(req.body);
+  await renameTree(currentTreeId(req), name);
+  res.json({ ...req.tree, name });
+});
+
+// ---- This tree's settings: members read them, the owner and admins change them ----
+treesRouter.get('/:treeId/settings', (req, res) => {
+  res.json(req.tree!.settings);
+});
+
+treesRouter.patch('/:treeId/settings', requireTreeManager, async (req, res) => {
+  const changes = treeSettingsUpdateSchema.parse(req.body);
+  res.json(await updateTreeSettings(currentTreeId(req), changes));
+});
+
+// ---- Tree content: viewers read, editors and owners write ----
+treesRouter.use('/:treeId/persons', editorForWrites, personsRouter);
+treesRouter.use('/:treeId/relationships', editorForWrites, relationshipsRouter);
+treesRouter.use('/:treeId/photos', editorForWrites, photosRouter);
+treesRouter.use('/:treeId/graph', graphRouter);
+
+// GET /api/trees/:treeId/branch -> what the caller may edit when they are limited to a branch:
+// { scope: null } for everyone else, or { scope, people: [{ id, level }] } where level is the
+// generation below the branch's root (null for someone in it only as a spouse).
+treesRouter.get('/:treeId/branch', async (req, res) => {
+  const branch = await branchOf(req);
+  if (!branch) {
+    res.json({ scope: null });
+    return;
+  }
+  res.json({
+    scope: req.tree!.editScope,
+    people: [...branch.levels].map(([id, level]) => ({ id, level })),
+  });
+});
+
+// POST /api/trees/:treeId/import { people: [...], dryRun?, matches? }
+// Adds people (and the parent/spouse links between them) from a filled-in
+// template. Everything is checked first; nothing is written unless every row is valid.
+// The dry run also lists, per row ID, people already in the tree who may be the same
+// person (`candidates`); `matches` then says which rows stand for which of them.
+// Not for editors limited to a branch: imported people aren't linked to anyone in the tree.
+treesRouter.post('/:treeId/import', requireTreeRole('editor'), async (req, res) => {
+  assertNotBranchEditor(req);
+  const { people, dryRun, matches } = importSchema.parse(req.body);
+  const { issues, plan, candidates } = planImport(people, await loadExistingTree(currentTreeId(req)), matches);
+  const summary = plan && {
+    people: plan.people,
+    matched: plan.matched,
+    parentLinks: plan.parentLinks,
+    spouseLinks: plan.spouseLinks,
+  };
+
+  if (dryRun) {
+    res.json({ valid: !!plan, rowErrors: issues, summary, candidates });
+    return;
+  }
+  if (!plan) {
+    res.status(400).json({ error: 'The file has errors; nothing was imported.', rowErrors: issues });
+    return;
+  }
+  res.status(201).json(await runImport(currentTreeId(req), plan));
+});
+
+// POST /api/trees/:treeId/sample -> adds the sample family to the owner's empty tree.
+// Owner only, so a sample never turns up in a tree someone shared.
+treesRouter.post('/:treeId/sample', requireTreeRole('owner'), async (req, res) => {
+  res.status(201).json(await addSampleFamily(currentTreeId(req)));
+});
+
+// ---- "This is me": link your own membership to a person in the tree ----
+// Any member can do this (it changes only their own membership, not the tree).
+// The tree then opens around that person, a few generations deep, instead of loading everyone.
+treesRouter.put('/:treeId/me', async (req, res) => {
+  const { personId } = linkMeSchema.parse(req.body);
+  const status = await linkMemberToPerson(currentTreeId(req), req.user!.id, personId);
+  if (status === 'notFound') throw notFound('Person');
+  if (status === 'taken') {
+    throw new HttpError(409, 'Another member of this tree is already linked to this person', 'personTaken');
+  }
+  res.json({ myPersonId: personId });
+});
+
+treesRouter.delete('/:treeId/me', async (req, res) => {
+  await unlinkMember(currentTreeId(req), req.user!.id);
+  res.status(204).end();
+});
+
+// ---- Death anniversary reminders: any member, for themselves ----
+// PUT turns on email reminders of this person's ngày giỗ (needs a full death date); DELETE turns them off.
+treesRouter.put('/:treeId/reminders/:personId', async (req, res) => {
+  await setPersonReminder(req.user!.id, currentTreeId(req), String(req.params.personId), true, requestLocale(req));
+  res.json({ remindMe: true });
+});
+
+treesRouter.delete('/:treeId/reminders/:personId', async (req, res) => {
+  await setPersonReminder(req.user!.id, currentTreeId(req), String(req.params.personId), false, requestLocale(req));
+  res.status(204).end();
+});
+
+// ---- Leaving a shared tree ----
+treesRouter.delete('/:treeId/membership', async (req, res) => {
+  if (req.tree!.role === 'owner') {
+    throw new HttpError(400, "You can't leave a tree you own. Make someone else its owner first.");
+  }
+  await removeMember(currentTreeId(req), req.user!.id, ['admin', 'editor', 'viewer']);
+  res.status(204).end();
+});
+
+// ---- Members and invitations: the tree's owner and admins ----
+// Admins manage editors and viewers; only the owner manages admins (manageableRoles).
+treesRouter.get('/:treeId/members', requireTreeManager, async (req, res) => {
+  res.json(await listMembers(currentTreeId(req)));
+});
+
+treesRouter.patch('/:treeId/members/:userId', requireTreeManager, async (req, res) => {
+  const { role, scope = null } = memberRoleSchema.parse(req.body);
+  assertCanGrant(req, role);
+  const treeId = currentTreeId(req);
+  if (role === 'editor') await assertBranchRoot(treeId, scope);
+  if (!(await updateMemberRole(treeId, String(req.params.userId), role, scope, manageableRoles(req)))) {
+    throw notFound('Member');
+  }
+  res.json({ id: String(req.params.userId), role, scope: role === 'editor' ? scope : null });
+});
+
+treesRouter.delete('/:treeId/members/:userId', requireTreeManager, async (req, res) => {
+  if (!(await removeMember(currentTreeId(req), String(req.params.userId), manageableRoles(req)))) {
+    throw notFound('Member');
+  }
+  res.status(204).end();
+});
+
+// DELETE /api/trees/:treeId -> the tree and everything in it, for every member. Owner only.
+treesRouter.delete('/:treeId', requireTreeRole('owner'), async (req, res) => {
+  if (!(await deleteTree(currentTreeId(req)))) throw notFound('Tree');
+  res.status(204).end();
+});
+
+// POST /api/trees/:treeId/transfer { userId } -> that member becomes the owner; you become an admin.
+treesRouter.post('/:treeId/transfer', requireTreeRole('owner'), async (req, res) => {
+  const { userId } = transferOwnershipSchema.parse(req.body);
+  if (userId === req.user!.id) throw new HttpError(400, 'You already own this tree');
+  if (!(await transferOwnership(currentTreeId(req), req.user!.id, userId))) throw notFound('Member');
+  res.json({ ownerId: userId, yourRole: 'admin' });
+});
+
+treesRouter.get('/:treeId/invitations', requireTreeManager, async (req, res) => {
+  res.json(await listInvitations(currentTreeId(req)));
+});
+
+treesRouter.post('/:treeId/invitations', requireTreeManager, async (req, res) => {
+  const { email, role, scope = null } = inviteSchema.parse(req.body);
+  if (email === req.user!.email) throw new HttpError(400, "You can't invite yourself");
+  assertCanGrant(req, role);
+  const treeId = currentTreeId(req);
+  if (role === 'editor') await assertBranchRoot(treeId, scope);
+  await chargeInviteQuota(req.user!);
+  const invitation = await createInvitation({
+    treeId,
+    email,
+    role,
+    scope,
+    invitedBy: req.user!.id,
+    manageable: manageableRoles(req),
+  });
+  res.status(201).json(invitation);
+});
+
+treesRouter.post('/:treeId/invitations/:id/resend', requireTreeManager, async (req, res) => {
+  await chargeInviteQuota(req.user!);
+  const invitation = await resendInvitation(currentTreeId(req), String(req.params.id), manageableRoles(req));
+  if (!invitation) throw notFound('Invitation');
+  res.json(invitation);
+});
+
+treesRouter.delete('/:treeId/invitations/:id', requireTreeManager, async (req, res) => {
+  if (!(await revokeInvitation(currentTreeId(req), String(req.params.id), manageableRoles(req)))) {
+    throw notFound('Invitation');
+  }
+  res.status(204).end();
+});
