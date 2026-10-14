@@ -136,6 +136,93 @@ export function anniversaryReminderEmail(
   };
 }
 
+export interface AccessRequestItem {
+  name: string;
+  email: string | null;
+  message: string | null;
+}
+
+/**
+ * To a tree's owner and admins: people asked for access through its "request
+ * access" link. Sent at most once an hour per tree, listing every pending request.
+ */
+export function accessRequestEmail(
+  to: string,
+  locale: 'en' | 'vi',
+  treeName: string,
+  requests: AccessRequestItem[],
+  total: number,
+  shareUrl: string,
+): EmailMessage {
+  const vi = locale === 'vi';
+  const who = (r: AccessRequestItem, html: boolean) => {
+    const name = html ? `<strong>${escapeHtml(r.name)}</strong>` : r.name;
+    const email = r.email ? ` (${html ? escapeHtml(r.email) : r.email})` : '';
+    const note = r.message ? `: “${html ? escapeHtml(r.message) : r.message}”` : '';
+    return `${name}${email}${note}`;
+  };
+  const more = total > requests.length ? (vi ? `…và ${total - requests.length} người khác.` : `…and ${total - requests.length} more.`) : '';
+  const tree = (html: boolean) => (html ? `<strong>${escapeHtml(treeName)}</strong>` : treeName);
+  const intro = (html: boolean) =>
+    vi
+      ? `Có ${total} người đang xin quyền truy cập cây ${tree(html)}:`
+      : `${total === 1 ? '1 person is' : `${total} people are`} asking for access to ${tree(html)}:`;
+  const footer = vi
+    ? 'Bạn nhận email này vì là chủ sở hữu hoặc quản trị viên của cây, và cây có liên kết xin quyền truy cập. Không ai xem được cây cho tới khi được duyệt.'
+    : 'You get this email because you own or help manage this tree and it has a request-access link. Nobody sees the tree until a request is approved.';
+  return {
+    to,
+    subject: vi ? `Yêu cầu truy cập cây "${treeName}" (${total})` : `Access requests for "${treeName}" (${total})`,
+    html: layout(
+      vi ? 'Yêu cầu truy cập' : 'Access requests',
+      [intro(true), requests.map((r) => who(r, true)).join('<br>') + (more ? `<br>${more}` : '')],
+      { label: vi ? 'Xem và duyệt' : 'Review requests', url: shareUrl },
+      footer,
+    ),
+    text: `${intro(false)}\n\n${requests.map((r) => `- ${who(r, false)}`).join('\n')}${more ? `\n${more}` : ''}\n\n${shareUrl}\n\n${footer}`,
+  };
+}
+
+/** To the person who asked: their request was approved (with what access) or declined. */
+export function accessDecisionEmail(
+  to: string,
+  locale: 'en' | 'vi',
+  treeName: string,
+  decision: 'admin' | 'editor' | 'viewer' | 'declined',
+  appUrl: string,
+): EmailMessage {
+  const vi = locale === 'vi';
+  const tree = (html: boolean) => (html ? `<strong>${escapeHtml(treeName)}</strong>` : treeName);
+  if (decision === 'declined') {
+    const body = (html: boolean) =>
+      vi
+        ? `Yêu cầu truy cập cây ${tree(html)} của bạn chưa được chấp nhận. Nếu nghĩ là có nhầm lẫn, hãy liên hệ trực tiếp người đã gửi liên kết cho bạn.`
+        : `Your request for access to ${tree(html)} was not accepted. If you think this is a mistake, contact the person who sent you the link.`;
+    return {
+      to,
+      subject: vi ? `Yêu cầu truy cập "${treeName}"` : `Your access request for "${treeName}"`,
+      html: layout(vi ? 'Yêu cầu chưa được chấp nhận' : 'Request not accepted', [body(true)], { label: vi ? 'Mở ứng dụng' : 'Open the app', url: appUrl }, ''),
+      text: `${body(false)}\n\n${appUrl}`,
+    };
+  }
+  const access = vi
+    ? { admin: 'xem, chỉnh sửa và cùng quản lý', editor: 'xem và chỉnh sửa', viewer: 'xem' }[decision]
+    : { admin: 'view, edit and help manage', editor: 'view and edit', viewer: 'view' }[decision];
+  const body = (html: boolean) =>
+    vi ? `Bạn đã được cấp quyền ${access} cây ${tree(html)}.` : `You can now ${access} ${tree(html)}.`;
+  return {
+    to,
+    subject: vi ? `Bạn đã có quyền truy cập "${treeName}"` : `You now have access to "${treeName}"`,
+    html: layout(
+      vi ? 'Yêu cầu đã được duyệt' : 'Request approved',
+      [body(true), vi ? 'Cây xuất hiện trong ô chọn cây, mục “Được chia sẻ với tôi”.' : 'The tree is in the tree switcher, under “Shared with me”.'],
+      { label: vi ? 'Mở cây gia phả' : 'Open the family tree', url: appUrl },
+      '',
+    ),
+    text: `${body(false)}\n\n${appUrl}`,
+  };
+}
+
 export function invitationEmail(
   to: string,
   inviter: string,

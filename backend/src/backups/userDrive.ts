@@ -21,7 +21,11 @@ export const BACKUP_PROPERTY = 'familyTreeBackup';
 /** The refresh token no longer works (revoked by the user, or expired): they need to reconnect. */
 export class DriveAccessLost extends Error {}
 
-export const driveCallbackUrl = () => `${config.auth.publicAppUrl}/api/drive/callback`;
+/**
+ * The Google sign-in callback, already an authorized redirect URI of the OAuth
+ * client; it passes Drive connections on to routes/drive.ts (finishDriveConnect).
+ */
+export const driveCallbackUrl = () => `${config.auth.publicAppUrl}/api/auth/google/callback`;
 
 /** Drive backups use the Google sign-in OAuth client. */
 export function driveConfigured(): boolean {

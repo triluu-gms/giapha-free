@@ -18,6 +18,15 @@ import {
 } from '../backups/backups';
 import { exportCsv, exportFileStem, exportJson, loadTreeExport } from '../backups/exportTree';
 import { setPersonReminder } from '../reminders/preferences';
+import {
+  accessLinkSchema,
+  approveAccessRequest,
+  createAccessLink,
+  declineAccessRequest,
+  getAccessLink,
+  listAccessRequests,
+  revokeAccessLink,
+} from '../trees/accessRequests';
 import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/branch';
 import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
 import { addSampleFamily } from '../trees/sampleFamily';
@@ -57,9 +66,14 @@ export const treesRouter = Router();
 const BACKUP_COOLDOWN_MS = 60 * 1000;
 
 // GET /api/trees -> the user's own trees plus every tree shared with them
+// Read first: only an account that owns no tree yet needs the (write) step that creates one.
 treesRouter.get('/', async (req, res) => {
-  await ensurePersonalTree(req.user!, requestLocale(req));
-  res.json(await listTrees(req.user!.id));
+  let trees = await listTrees(req.user!.id);
+  if (!trees.some((tree) => tree.role === 'owner')) {
+    await ensurePersonalTree(req.user!, requestLocale(req));
+    trees = await listTrees(req.user!.id);
+  }
+  res.json(trees);
 });
 
 // POST /api/trees { name } -> a new, empty tree owned by the caller
@@ -261,6 +275,48 @@ treesRouter.post('/:treeId/transfer', requireTreeRole('owner'), async (req, res)
   if (userId === req.user!.id) throw new HttpError(400, 'You already own this tree');
   if (!(await transferOwnership(currentTreeId(req), req.user!.id, userId))) throw notFound('Member');
   res.json({ ownerId: userId, yourRole: 'admin' });
+});
+
+// ---- "Request access" link and the requests it brings: the owner and admins ----
+
+// GET /api/trees/:treeId/access-link -> { url, createdAt, createdByName, expiresAt, expired } | null
+treesRouter.get('/:treeId/access-link', requireTreeManager, async (req, res) => {
+  res.json(await getAccessLink(currentTreeId(req)));
+});
+
+// POST /api/trees/:treeId/access-link { expiresInDays: 7 | 30 | null } -> a new link (the old one stops working)
+treesRouter.post('/:treeId/access-link', requireTreeManager, async (req, res) => {
+  const { expiresInDays } = accessLinkSchema.parse(req.body);
+  res.status(201).json(await createAccessLink(currentTreeId(req), req.user!.id, expiresInDays));
+});
+
+treesRouter.delete('/:treeId/access-link', requireTreeManager, async (req, res) => {
+  await revokeAccessLink(currentTreeId(req));
+  res.status(204).end();
+});
+
+treesRouter.get('/:treeId/access-requests', requireTreeManager, async (req, res) => {
+  res.json(await listAccessRequests(currentTreeId(req)));
+});
+
+// POST /api/trees/:treeId/access-requests/:userId/approve { role, scope? } -> grants access, emails the requester
+treesRouter.post('/:treeId/access-requests/:userId/approve', requireTreeManager, async (req, res) => {
+  const { role, scope = null } = memberRoleSchema.parse(req.body);
+  assertCanGrant(req, role);
+  const treeId = currentTreeId(req);
+  if (role === 'editor') await assertBranchRoot(treeId, scope);
+  if (!(await approveAccessRequest(treeId, String(req.params.userId), role, scope, requestLocale(req)))) {
+    throw notFound('Access request');
+  }
+  res.status(204).end();
+});
+
+// DELETE /api/trees/:treeId/access-requests/:userId -> declines, emails the requester
+treesRouter.delete('/:treeId/access-requests/:userId', requireTreeManager, async (req, res) => {
+  if (!(await declineAccessRequest(currentTreeId(req), String(req.params.userId), requestLocale(req)))) {
+    throw notFound('Access request');
+  }
+  res.status(204).end();
 });
 
 treesRouter.get('/:treeId/invitations', requireTreeManager, async (req, res) => {

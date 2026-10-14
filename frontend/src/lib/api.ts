@@ -1,4 +1,6 @@
 import type {
+  AccessLink,
+  AccessRequest,
   AuthProviderInfo,
   BackupFrequency,
   BackupStatus,
@@ -12,6 +14,7 @@ import type {
   Invitation,
   InvitationPreview,
   InviteRole,
+  JoinPreview,
   Person,
   PersonDetail,
   PersonInput,
@@ -42,7 +45,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options?: { quiet?: boolean }): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: {
@@ -66,7 +69,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // non-JSON error body; keep the generic message
     }
-    if (res.status === 401) window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    if (res.status === 401 && !options?.quiet) window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     throw new ApiError(res.status, message, code);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
@@ -146,6 +149,11 @@ export const api = {
 
   // ---- Trees ----
   listTrees: () => request<TreeSummary[]>('/api/trees'),
+  /**
+   * The same, fetched speculatively while /api/auth/me is still loading: null
+   * instead of an error (signed out, agreement not accepted…), and no sign-out event.
+   */
+  prefetchTrees: () => request<TreeSummary[]>('/api/trees', undefined, { quiet: true }).catch(() => null),
   /** A new, empty tree that you own. */
   createTree: (name: string) =>
     request<TreeSummary>('/api/trees', { method: 'POST', body: JSON.stringify({ name }) }),
@@ -181,6 +189,33 @@ export const api = {
     request<Invitation>(`/api/trees/${enc(treeId)}/invitations/${enc(id)}/resend`, { method: 'POST' }),
   revokeInvitation: (treeId: string, id: string) =>
     request<void>(`/api/trees/${enc(treeId)}/invitations/${enc(id)}`, { method: 'DELETE' }),
+
+  // ---- "Request access" link (owner and admins) ----
+  getAccessLink: (treeId: string) => request<AccessLink | null>(`/api/trees/${enc(treeId)}/access-link`),
+  /** A new link; the previous one stops working. */
+  createAccessLink: (treeId: string, expiresInDays: 7 | 30 | null) =>
+    request<AccessLink>(`/api/trees/${enc(treeId)}/access-link`, {
+      method: 'POST',
+      body: JSON.stringify({ expiresInDays }),
+    }),
+  revokeAccessLink: (treeId: string) => request<void>(`/api/trees/${enc(treeId)}/access-link`, { method: 'DELETE' }),
+  listAccessRequests: (treeId: string) => request<AccessRequest[]>(`/api/trees/${enc(treeId)}/access-requests`),
+  approveAccessRequest: (treeId: string, userId: string, role: InviteRole) =>
+    request<void>(`/api/trees/${enc(treeId)}/access-requests/${enc(userId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    }),
+  declineAccessRequest: (treeId: string, userId: string) =>
+    request<void>(`/api/trees/${enc(treeId)}/access-requests/${enc(userId)}`, { method: 'DELETE' }),
+
+  // ---- The /join page (anyone with the link) ----
+  joinPreview: (token: string) => request<JoinPreview>(`/api/join/preview${qs({ token })}`),
+  requestAccess: (token: string, message?: string) =>
+    request<{ status: 'pending' | 'member'; treeId?: string }>('/api/join/request', {
+      method: 'POST',
+      body: JSON.stringify({ token, message: message || undefined }),
+    }),
+  cancelAccessRequest: (token: string) => request<void>(`/api/join/request${qs({ token })}`, { method: 'DELETE' }),
   previewInvitation: (token: string) => request<InvitationPreview>(`/api/invitations/preview${qs({ token })}`),
   myInvitations: () => request<Invitation[]>('/api/invitations/mine'),
   acceptInvitationToken: (token: string) =>

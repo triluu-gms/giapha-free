@@ -2,11 +2,20 @@ import type { Request, RequestHandler } from 'express';
 import { HttpError, notFound } from '../errors';
 import { getTreeAccess, hasTreeRole, type TreeRole } from './trees';
 
-/** Loads the caller's membership of :treeId into req.tree. Non-members get 404. */
+/**
+ * Loads the caller's membership of :treeId into req.tree. Non-members get 404.
+ * Usually it was already read together with the session (requireAuthForTrees).
+ */
 export const loadTree: RequestHandler = async (req, _res, next) => {
   if (!req.user) throw new HttpError(401, 'Authentication required');
   const treeId = req.params.treeId;
-  const access = typeof treeId === 'string' ? await getTreeAccess(req.user.id, treeId) : null;
+  const prefetched = req.prefetchedTree;
+  const access =
+    typeof treeId !== 'string'
+      ? null
+      : prefetched?.id === treeId
+        ? prefetched.access
+        : await getTreeAccess(req.user.id, treeId);
   if (!access) throw notFound('Tree');
   req.tree = access;
   next();

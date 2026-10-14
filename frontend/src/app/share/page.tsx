@@ -7,7 +7,16 @@ import { useI18n } from '@/components/I18nProvider';
 import RequireAuth from '@/components/RequireAuth';
 import { useCurrentTree } from '@/components/TreeProvider';
 import { api } from '@/lib/api';
-import type { EditScope, EditScopeInput, Invitation, InviteRole, TreeMember, TreeRole } from '@/lib/types';
+import type {
+  AccessLink,
+  AccessRequest,
+  EditScope,
+  EditScopeInput,
+  Invitation,
+  InviteRole,
+  TreeMember,
+  TreeRole,
+} from '@/lib/types';
 
 function SharePanel() {
   const { user } = useAuth();
@@ -23,19 +32,36 @@ function SharePanel() {
   const [editingBranch, setEditingBranch] = useState<{ userId: string; scope: EditScopeInput | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  // The "request access" link and the requests it brought in.
+  const [accessLink, setAccessLink] = useState<AccessLink | null>(null);
+  const [linkExpiry, setLinkExpiry] = useState<'7' | '30' | 'never'>('30');
+  const [copied, setCopied] = useState(false);
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  // The role chosen for each request before approving it (default: view only).
+  const [requestRoles, setRequestRoles] = useState<Record<string, InviteRole>>({});
 
   const roleText = (r: TreeRole) => t(`treeRole.${r}`);
 
   const load = useCallback(async () => {
-    const [m, i] = await Promise.all([api.listMembers(tree.id), api.listInvitations(tree.id)]);
+    const [m, i, l, r] = await Promise.all([
+      api.listMembers(tree.id),
+      api.listInvitations(tree.id),
+      api.getAccessLink(tree.id),
+      api.listAccessRequests(tree.id),
+    ]);
     setMembers(m);
     setInvitations(i);
+    setAccessLink(l);
+    setRequests(r);
   }, [tree.id]);
 
   useEffect(() => {
     // Everything here belongs to one tree: after switching trees, never show the previous tree's lists.
     setMembers([]);
     setInvitations([]);
+    setAccessLink(null);
+    setRequests([]);
+    setRequestRoles({});
     setNotice(null);
     setScope(null); // a branch is a person of one tree
     setEditingBranch(null);
@@ -107,6 +133,40 @@ function SharePanel() {
     </>
   );
 
+  function makeLink() {
+    if (accessLink && !confirm(t('accessLink.replaceConfirm'))) return;
+    const days = linkExpiry === 'never' ? null : (Number(linkExpiry) as 7 | 30);
+    void run(() => api.createAccessLink(tree.id, days), t('accessLink.created'));
+  }
+
+  function turnOffLink() {
+    if (!confirm(t('accessLink.offConfirm'))) return;
+    void run(() => api.revokeAccessLink(tree.id), t('accessLink.turnedOff'));
+  }
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // No clipboard access (old browser, or not HTTPS): the field is selected for a manual copy.
+      (document.getElementById('access-link-url') as HTMLInputElement | null)?.select();
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  // Approving or declining changes the count on the Share link in the header too.
+  function answer(r: AccessRequest, approve: boolean) {
+    const name = r.name ?? r.email ?? '';
+    const role = requestRoles[r.userId] ?? 'viewer';
+    void run(async () => {
+      if (approve) await api.approveAccessRequest(tree.id, r.userId, role);
+      else await api.declineAccessRequest(tree.id, r.userId);
+      await refreshTrees(tree.id);
+    }, approve ? t('accessRequest.approved', { name }) : t('accessRequest.declined', { name }));
+  }
+
   function transfer(m: TreeMember) {
     const name = m.name ?? m.email ?? '';
     if (!confirm(t('share.makeOwnerConfirm', { name, tree: tree.name }))) return;
@@ -148,6 +208,80 @@ function SharePanel() {
         {role === 'editor' && <BranchPicker value={scope} onChange={setScope} disabled={busy} />}
         {role === 'admin' && <p className="muted small">{t('share.adminHint')}</p>}
         <p className="muted small">{t('share.inviteHint')}</p>
+      </section>
+
+      {requests.length > 0 && (
+        <section className="card highlight">
+          <h3>{t('accessRequest.title', { count: requests.length })}</h3>
+          <p className="muted small">{t('accessRequest.hint')}</p>
+          <ul className="request-list">
+            {requests.map((r) => (
+              <li key={r.userId}>
+                <div className="request-who">
+                  <strong>{r.name ?? r.email ?? '—'}</strong>
+                  {r.name && r.email && <span className="muted small"> · {r.email}</span>}
+                  <div className="muted small">{formatDate(r.createdAt)}</div>
+                  {r.message && <blockquote className="request-message">{r.message}</blockquote>}
+                </div>
+                <div className="actions">
+                  <select
+                    value={requestRoles[r.userId] ?? 'viewer'}
+                    disabled={busy}
+                    onChange={(e) => setRequestRoles((all) => ({ ...all, [r.userId]: e.target.value as InviteRole }))}
+                    aria-label={t('share.accessFor', { name: r.name ?? r.email ?? '' })}
+                  >
+                    {roleOptions}
+                  </select>
+                  <button className="btn primary" disabled={busy} onClick={() => answer(r, true)}>
+                    {t('accessRequest.approve')}
+                  </button>
+                  <button className="btn" disabled={busy} onClick={() => answer(r, false)}>
+                    {t('accessRequest.decline')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="card">
+        <h3>{t('accessLink.title')}</h3>
+        <p className="muted small">{t('accessLink.intro')}</p>
+        {accessLink?.url && !accessLink.expired && (
+          <>
+            <div className="inline-form">
+              <input id="access-link-url" readOnly value={accessLink.url} onFocus={(e) => e.target.select()} aria-label={t('accessLink.title')} />
+              <button className="btn primary" type="button" onClick={() => void copyLink(accessLink.url!)}>
+                {copied ? t('accessLink.copied') : t('accessLink.copy')}
+              </button>
+            </div>
+            <p className="muted small">
+              {accessLink.expiresAt
+                ? t('accessLink.expires', { date: formatDate(accessLink.expiresAt) })
+                : t('accessLink.noExpiry')}
+              {accessLink.createdByName && ` · ${t('accessLink.createdBy', { name: accessLink.createdByName })}`}
+            </p>
+          </>
+        )}
+        {accessLink && (accessLink.expired || !accessLink.url) && (
+          <p className="error small">{accessLink.expired ? t('accessLink.expiredNote') : t('accessLink.unreadable')}</p>
+        )}
+        <div className="actions access-link-actions">
+          <select value={linkExpiry} onChange={(e) => setLinkExpiry(e.target.value as '7' | '30' | 'never')} aria-label={t('accessLink.validFor')} disabled={busy}>
+            <option value="7">{t('accessLink.days', { count: 7 })}</option>
+            <option value="30">{t('accessLink.days', { count: 30 })}</option>
+            <option value="never">{t('accessLink.untilOff')}</option>
+          </select>
+          <button className="btn" type="button" onClick={makeLink} disabled={busy}>
+            {accessLink ? t('accessLink.newLink') : t('accessLink.create')}
+          </button>
+          {accessLink && (
+            <button className="btn danger" type="button" onClick={turnOffLink} disabled={busy}>
+              {t('accessLink.turnOff')}
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="card">

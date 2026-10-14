@@ -38,7 +38,7 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Explicit projection: passwordHash and token hashes never leave the database layer.
-const USER_FIELDS = `.id, .email, .name, .avatarUrl, .createdAt, .lastLoginAt,
+export const USER_FIELDS =`.id, .email, .name, .avatarUrl, .createdAt, .lastLoginAt,
   emailVerified: coalesce(u.emailVerified, u.email IS NOT NULL),
   verificationRequired: u.passwordHash IS NOT NULL AND NOT coalesce(u.emailVerified, false),
   hasPassword: u.passwordHash IS NOT NULL,

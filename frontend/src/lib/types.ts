@@ -160,6 +160,36 @@ export interface User {
   privacyAcceptedAt: string | null;
 }
 
+/** A tree's shareable "request access" link (trees/accessRequests.ts in the backend). */
+export interface AccessLink {
+  /** Null if it can't be shown again (the server's secret changed): make a new one. */
+  url: string | null;
+  createdAt: string;
+  createdByName: string | null;
+  /** Null: until it is turned off. */
+  expiresAt: string | null;
+  expired: boolean;
+}
+
+/** Someone who asked for access through the link. */
+export interface AccessRequest {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  message: string | null;
+  createdAt: string;
+}
+
+/** What the /join page shows. `status` is 'anonymous' when not signed in. */
+export interface JoinPreview {
+  treeName: string;
+  sharedBy: string | null;
+  expired: boolean;
+  status: 'anonymous' | 'none' | 'pending' | 'member';
+  /** Only for members, to open the tree. */
+  treeId?: string;
+}
+
 /** The signed-in user's Google Drive connection, used for tree backups. */
 export interface DriveStatus {
   /** The server has a Google OAuth client, so Drive can be connected at all. */
@@ -230,6 +260,8 @@ export interface TreeSummary {
   ownerName: string | null;
   personCount: number;
   memberCount: number;
+  /** Pending requests from the tree's "request access" link (0 unless owner or admin). */
+  accessRequestCount: number;
 }
 
 export interface TreeMember {

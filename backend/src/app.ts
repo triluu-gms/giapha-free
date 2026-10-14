@@ -4,7 +4,12 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { ZodError } from 'zod';
-import { requireAuth, requireCsrfHeader, requirePrivacyConsent, requireVerifiedEmail } from './auth/middleware';
+import {
+  requireAuthForTrees,
+  requireCsrfHeader,
+  requirePrivacyConsent,
+  requireVerifiedEmail,
+} from './auth/middleware';
 import { config } from './config';
 import { getDriver, query } from './db';
 import { HttpError } from './errors';
@@ -14,6 +19,7 @@ import { runReminders } from './reminders/run';
 import { authRouter } from './routes/auth';
 import { driveRouter } from './routes/drive';
 import { invitationsRouter } from './routes/invitations';
+import { joinRouter } from './routes/join';
 import { treesRouter } from './routes/trees';
 
 const app = express();
@@ -89,10 +95,12 @@ app.use('/api/auth', authRouter);
 app.use('/api/drive', driveRouter);
 // Preview is public; accepting/declining checks the session inside the router.
 app.use('/api/invitations', invitationsRouter);
+// "Request access" links: the preview is public, asking checks the session inside the router.
+app.use('/api/join', joinRouter);
 
 // ---- Protected routes: a valid session cookie, the accepted data agreement and a verified email ----
 // Tree content is scoped to /api/trees/:treeId and the caller's membership of it.
-app.use('/api/trees', requireAuth, requirePrivacyConsent, requireVerifiedEmail, treesRouter);
+app.use('/api/trees', requireAuthForTrees, requirePrivacyConsent, requireVerifiedEmail, treesRouter);
 // No application-wide admin: there is no route that lists or manages other accounts.
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -1,5 +1,5 @@
 import type { Locale } from '../auth/cookies';
-import { personalTreeName, type AuthUser } from '../auth/users';
+import { personalTreeName, USER_FIELDS, type AuthUser } from '../auth/users';
 import { query } from '../db';
 import { editScopeCypher, type EditScope } from './branch';
 import { removeStoredFiles } from './photos';
@@ -31,6 +31,8 @@ export interface TreeSummary extends TreeAccess {
   ownerName: string | null;
   personCount: number;
   memberCount: number;
+  /** Pending requests from the tree's "request access" link (0 unless owner or admin). */
+  accessRequestCount: number;
 }
 
 export interface TreeMember {
@@ -50,6 +52,31 @@ export interface TreeMember {
 // so it is per tree. It only counts while that person still exists in the tree, which
 // keeps deleted people from leaving dangling links. `m` is the membership, `t` the tree.
 const MY_PERSON_CYPHER = `CASE WHEN EXISTS { (:Person {id: m.personId, treeId: t.id}) } THEN m.personId END`;
+
+/** Cypher map of a TreeAccess; `m` is the caller's membership, `t` the tree. */
+const TREE_ACCESS_CYPHER = `{
+  id: t.id, name: t.name, role: m.role, settings: ${TREE_SETTINGS_CYPHER},
+  myPersonId: ${MY_PERSON_CYPHER}, editScope: ${editScopeCypher('m', 't.id')}
+}`;
+
+/**
+ * The signed-in user and, in the same round trip, their access to `treeId` (null
+ * if not a member). Every /api/trees/:treeId request needs both, and each
+ * database round trip costs real time, so requireAuth and loadTree share this.
+ */
+export async function findSessionUserWithTree(
+  userId: string,
+  treeId: string,
+): Promise<{ user: AuthUser; passwordChangedAt: string | null; tree: TreeAccess | null } | null> {
+  const [row] = await query<{ user: AuthUser; passwordChangedAt: string | null; tree: TreeAccess | null }>(
+    `MATCH (u:User {id: $userId})
+     OPTIONAL MATCH (u)-[m:MEMBER_OF]->(t:Tree {id: $treeId})
+     RETURN u {${USER_FIELDS}} AS user, u.passwordChangedAt AS passwordChangedAt,
+            CASE WHEN t IS NULL THEN null ELSE ${TREE_ACCESS_CYPHER} END AS tree`,
+    { userId, treeId },
+  );
+  return row ?? null;
+}
 
 /**
  * Accounts created before shared trees existed have no Tree yet; this creates
@@ -126,7 +153,9 @@ export async function listTrees(userId: string): Promise<TreeSummary[]> {
        editScope: ${editScopeCypher('m', 't.id')},
        ownerName: coalesce(owner.name, owner.email),
        personCount: COUNT { (p:Person) WHERE p.treeId = t.id },
-       memberCount: COUNT { (:User)-[:MEMBER_OF]->(t) }
+       memberCount: COUNT { (:User)-[:MEMBER_OF]->(t) },
+       // Pending "request access" link requests; only the owner and admins can act on them.
+       accessRequestCount: CASE WHEN m.role IN ['owner', 'admin'] THEN COUNT { (:User)-[:REQUESTS_ACCESS]->(t) } ELSE 0 END
      } AS tree
      ORDER BY CASE m.role WHEN 'owner' THEN 0 ELSE 1 END, toLower(t.name)`,
     { userId },
@@ -135,13 +164,12 @@ export async function listTrees(userId: string): Promise<TreeSummary[]> {
 }
 
 export async function getTreeAccess(userId: string, treeId: string): Promise<TreeAccess | null> {
-  const [row] = await query<TreeAccess>(
+  const [row] = await query<{ tree: TreeAccess }>(
     `MATCH (:User {id: $userId})-[m:MEMBER_OF]->(t:Tree {id: $treeId})
-     RETURN t.id AS id, t.name AS name, m.role AS role, ${TREE_SETTINGS_CYPHER} AS settings,
-            ${MY_PERSON_CYPHER} AS myPersonId, ${editScopeCypher('m', 't.id')} AS editScope`,
+     RETURN ${TREE_ACCESS_CYPHER} AS tree`,
     { userId, treeId },
   );
-  return row ?? null;
+  return row?.tree ?? null;
 }
 
 export async function renameTree(treeId: string, name: string): Promise<void> {

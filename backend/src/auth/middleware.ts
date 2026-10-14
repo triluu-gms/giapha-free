@@ -1,12 +1,17 @@
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { HttpError } from '../errors';
+import { findSessionUserWithTree, type TreeAccess } from '../trees/trees';
 import { clearSessionCookie, readCookie, SESSION_COOKIE } from './cookies';
 import { verifyAccessToken } from './tokens';
-import { findSessionUser } from './users';
+import { findSessionUser, type AuthUser } from './users';
 
-/** Verifies the session cookie and loads the user, so role changes apply immediately. */
-export const requireAuth: RequestHandler = async (req, res, next) => {
+/**
+ * Verifies the session cookie and loads the user, so changes (password, consent,
+ * deletion) apply immediately. With a treeId, the caller's access to that tree is
+ * loaded in the same database round trip and left for loadTree.
+ */
+async function authenticate(req: Request, res: Response, treeId?: string): Promise<void> {
   const token = readCookie(req, SESSION_COOKIE);
   if (!token) throw new HttpError(401, 'Authentication required');
 
@@ -21,7 +26,9 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     throw err;
   }
 
-  const found = await findSessionUser(session.userId);
+  const found: { user: AuthUser; passwordChangedAt: string | null; tree?: TreeAccess | null } | null = treeId
+    ? await findSessionUserWithTree(session.userId, treeId)
+    : await findSessionUser(session.userId);
   if (!found) {
     clearSessionCookie(req, res);
     throw new HttpError(401, 'Account no longer exists');
@@ -32,6 +39,21 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     throw new HttpError(401, 'Your password was changed. Please sign in again.');
   }
   req.user = found.user;
+  if (treeId) req.prefetchedTree = { id: treeId, access: found.tree ?? null };
+}
+
+export const requireAuth: RequestHandler = async (req, res, next) => {
+  await authenticate(req, res);
+  next();
+};
+
+/**
+ * requireAuth for the /api/trees router: for /api/trees/:treeId/... it also loads
+ * the caller's membership of that tree in the same query (used by loadTree).
+ */
+export const requireAuthForTrees: RequestHandler = async (req, res, next) => {
+  const treeId = req.path.split('/')[1];
+  await authenticate(req, res, treeId ? decodeURIComponent(treeId) : undefined);
   next();
 };
 

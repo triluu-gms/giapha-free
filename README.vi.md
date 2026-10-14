@@ -40,9 +40,13 @@ Trình duyệt chỉ nói chuyện với tên miền của frontend. Next.js chu
 
 (:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?,
         backupFrequency?, backupKeep?, backupUserId?, backupLocale?, backupFolderId?, backupFolderUrl?,
-        backupLastRunAt?, backupLastStatus?, backupLastError?})
+        backupLastRunAt?, backupLastStatus?, backupLastError?,
+        accessLinkHash?, accessLinkToken?, accessLinkCreatedBy?, accessLinkCreatedAt?, accessLinkExpiresAt?,
+        accessRequestsNotifiedAt?})
     // cài đặt riêng từng cây; thiếu = bật xóa nhiều, 'solar' (thuộc tính cũ `calendar` là giá trị dự phòng cho cả hai)
     // backup*: lịch sao lưu lên Google Drive (thiếu = tắt)
+    // accessLink*: liên kết xin quyền truy cập (token được băm để tra cứu, và mã hóa để quản trị viên sao chép lại)
+(:User)-[:REQUESTS_ACCESS {message?, locale, createdAt}]->(:Tree)   // một yêu cầu đang chờ từ liên kết đó
 (:User)-[:MEMBER_OF {role: 'owner' | 'admin' | 'editor' | 'viewer', since, personId?, scopeRootId?, scopeDepth?}]->(:Tree)
     // personId: "Đây là tôi"; scopeRootId/scopeDepth: người chỉnh sửa giới hạn trong một nhánh (thiếu = cả cây)
 
@@ -314,6 +318,17 @@ Lời mời chỉ có tác dụng với tài khoản có email **đã xác minh*
 
 Ở trang **Chia sẻ**, chủ sở hữu và quản trị viên cũng có thể đổi vai trò thành viên, gỡ quyền truy cập, và gửi lại hoặc thu hồi lời mời đang chờ, trong phạm vi vai trò mình quản lý (xem bảng ở trên). Thành viên, kể cả quản trị viên, có thể rời khỏi cây được chia sẻ từ trang cây.
 
+### Liên kết xin quyền truy cập
+
+Ngoài lời mời qua email, chủ sở hữu hoặc quản trị viên có thể tạo một liên kết chia sẻ cho mỗi cây ở trang **Chia sẻ** (*Liên kết xin quyền truy cập*), dùng được 7 ngày, 30 ngày, hoặc đến khi tắt. Cách này hợp với nhóm chat gia đình, khi bạn không biết email của từng người.
+
+1. **Chia sẻ ở bất cứ đâu.** `https://<trang>/join/<token>` chỉ hiện tên cây và người đã chia sẻ.
+2. **Xin quyền.** Người nhận đăng nhập hoặc đăng ký (vẫn phải đồng ý Thỏa thuận dữ liệu cá nhân và xác minh email như thường lệ), có thể thêm lời nhắn ("Con là con trai bác Hai ở Đà Nẵng"), rồi bấm *Xin quyền truy cập*. Mỗi người chỉ có một yêu cầu đang chờ cho mỗi cây; một người chờ tối đa 10 cây, và một cây nhận tối đa 200 yêu cầu đang chờ. Người xin quyền có thể rút lại yêu cầu ngay trên trang đó.
+3. **Thông báo.** Chủ sở hữu và quản trị viên nhận email liệt kê các yêu cầu đang chờ, tối đa một email mỗi giờ cho mỗi cây, để liên kết được chia sẻ rộng không làm ngập hộp thư. Mục **Chia sẻ** trên thanh trên cùng hiện số yêu cầu đang chờ.
+4. **Quyết định.** Ở mục *Yêu cầu truy cập* trên trang **Chia sẻ**, chủ sở hữu hoặc quản trị viên chọn quyền (chỉ chủ sở hữu mới cấp được quyền quản trị viên) rồi bấm *Duyệt*, hoặc *Từ chối*. Duyệt hoạt động như chấp nhận lời mời: nếu người đó đã có quyền rộng hơn thì vẫn giữ. Người xin quyền nhận email trong cả hai trường hợp, bằng ngôn ngữ của họ.
+
+Bản thân liên kết không cấp quyền gì, nên liên kết bị lộ ra ngoài chỉ cho phép người lạ *xin* quyền. Việc tra cứu chỉ dùng giá trị băm của token. Token còn được lưu dạng mã hóa (khóa suy ra từ `JWT_SECRET`), để quản trị viên sao chép lại liên kết về sau. *Tạo liên kết mới* và *Tắt liên kết* làm liên kết cũ ngừng hoạt động, còn các yêu cầu đã gửi vẫn ở lại để trả lời. Yêu cầu là quan hệ `(:User)-[:REQUESTS_ACCESS]->(:Tree)`, nên tự mất đi cùng tài khoản hoặc cây. Mã nguồn: [`backend/src/trees/accessRequests.ts`](backend/src/trees/accessRequests.ts).
+
 ### Chuyển giao cây
 
 Chủ sở hữu có thể bấm **Chuyển quyền sở hữu** cạnh bất kỳ thành viên nào ở trang **Chia sẻ**. Sau khi xác nhận, thành viên đó trở thành chủ sở hữu và chủ cũ ở lại với vai trò quản trị viên. Cả hai thay đổi diễn ra trong một câu lệnh cơ sở dữ liệu, nên cây luôn có đúng một chủ sở hữu. Chỉ chủ mới có thể chuyển lại hoặc gỡ chủ cũ.
@@ -350,6 +365,7 @@ Công khai (không cần phiên đăng nhập):
 | POST | `/api/auth/reset-password` | `{ token, password }`. Đặt mật khẩu mới, đăng xuất các phiên khác, và đăng nhập |
 | POST | `/api/auth/logout` | Xóa cookie phiên |
 | GET | `/api/invitations/preview?token=` | Người mời, cây, email và vai trò cho trang đích của lời mời |
+| GET | `/api/join/preview?token=` | Cho trang xin quyền truy cập: `{ treeName, sharedBy, expired, status }`, với `status` là `anonymous`, `none`, `pending` hoặc `member` (thành viên nhận thêm `treeId`) |
 
 Đã đăng nhập:
 
@@ -365,11 +381,12 @@ Công khai (không cần phiên đăng nhập):
 | POST | `/api/auth/delete-account` | — | `{ password }` hoặc, khi không có mật khẩu, `{ confirm: email }`. Xóa tài khoản và các cây nó làm chủ, rồi đăng xuất |
 | POST | `/api/auth/resend-verification` | — | Gửi email liên kết xác minh mới |
 | GET / DELETE | `/api/drive` | đã xác minh | Kết nối Google Drive của bạn để sao lưu: `{ configured, connection: { email, connectedAt } \| null }`. DELETE ngắt kết nối và thu hồi quyền |
-| GET | `/api/drive/connect?next=` | đã xác minh | Bắt đầu kết nối Google Drive (chuyển trang). Google quay về `/api/drive/callback`, rồi về `next` kèm `?drive=connected` (hoặc `cancelled`, `noAccess`, `expired`, `failed`) |
+| GET | `/api/drive/connect?next=` | đã xác minh | Bắt đầu kết nối Google Drive (chuyển trang). Google quay về callback đăng nhập `/api/auth/google/callback`, rồi về `next` kèm `?drive=connected` (hoặc `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Chấp nhận từ liên kết trong email (cũng xác minh email chưa xác minh nếu trùng) |
 | GET | `/api/invitations/mine` | đã xác minh | Các lời mời đang chờ gửi tới email của tôi |
+| POST / DELETE | `/api/join/request` | đã xác minh | POST `{ token, message? }`: xin quyền truy cập qua liên kết của cây (`{ status: "pending" }`, hoặc `"member"` kèm `treeId`). DELETE `?token=` rút lại yêu cầu. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
 | POST | `/api/invitations/:id/accept` / `decline` | đã xác minh | Trả lời từ dải thông báo trong ứng dụng |
-| GET | `/api/trees` | đã xác minh | Các cây của tôi: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount }` |
+| GET | `/api/trees` | đã xác minh | Các cây của tôi: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount, accessRequestCount }` (`accessRequestCount` bằng 0 trừ khi bạn là chủ sở hữu hoặc quản trị viên) |
 | POST | `/api/trees` | đã xác minh | `{ name }`. Tạo một cây mới, trống do bạn làm chủ và trả về tóm tắt của nó. `409` (`code: "treeLimit"`) khi bạn đã làm chủ 20 cây |
 | PATCH | `/api/trees/:treeId` | admin | `{ name }`. Đổi tên |
 | DELETE | `/api/trees/:treeId` | owner | Xóa cây cùng người, quan hệ, ảnh (cả trong nơi lưu trữ), lời mời và quyền thành viên |
@@ -396,6 +413,10 @@ Công khai (không cần phiên đăng nhập):
 | DELETE | `/api/trees/:treeId/membership` | editor/viewer | Rời khỏi cây được chia sẻ |
 | GET | `/api/trees/:treeId/members` | admin | Các thành viên và vai trò |
 | PATCH / DELETE | `/api/trees/:treeId/members/:userId` | admin | `{ role: "admin" \| "editor" \| "viewer", scope?: { rootId, depth } \| null }`, hoặc gỡ quyền truy cập. `scope` giới hạn người chỉnh sửa trong một nhánh; bỏ trống hoặc null nghĩa là toàn cây. Quản trị viên chỉ đổi được người chỉnh sửa và người xem, và chỉ chủ sở hữu mới cấp được `admin` (`403`, `code: "ownerOnly"`) |
+| GET / POST / DELETE | `/api/trees/:treeId/access-link` | admin | Liên kết xin quyền truy cập: `{ url, createdAt, createdByName, expiresAt, expired } \| null`. POST `{ expiresInDays: 7 \| 30 \| null }` tạo liên kết mới (liên kết cũ ngừng hoạt động); DELETE tắt liên kết |
+| GET | `/api/trees/:treeId/access-requests` | admin | Các yêu cầu đang chờ: `[{ userId, name, email, message, createdAt }]` |
+| POST | `/api/trees/:treeId/access-requests/:userId/approve` | admin | `{ role, scope? }` như với thành viên (chỉ chủ sở hữu cấp được `admin`). Cấp quyền và gửi email cho người xin |
+| DELETE | `/api/trees/:treeId/access-requests/:userId` | admin | Từ chối và gửi email cho người xin |
 | GET / POST | `/api/trees/:treeId/invitations` | admin | Liệt kê, hoặc tạo `{ email, role: "admin" \| "editor" \| "viewer", scope? }` (gửi email). Chỉ chủ sở hữu mới mời được quản trị viên |
 | GET | `/api/trees/:treeId/branch` | viewer | `{ scope: null }`, hoặc với người chỉnh sửa theo nhánh `{ scope, people: [{ id, level }] }` (`level` là số đời bên dưới người đầu nhánh, `null` với vợ/chồng) |
 | POST | `/api/trees/:treeId/invitations/:id/resend` | admin | Liên kết và hạn mới, gửi email lại (lời mời quản trị viên: chỉ chủ sở hữu) |
@@ -474,7 +495,7 @@ Muốn dùng nhà cung cấp khác (SES, SendGrid, SMTP), chỉ cần sửa [`ba
 4. Chép client ID và secret vào `GOOGLE_CLIENT_ID` và `GOOGLE_CLIENT_SECRET`.
 5. **Để sao lưu lên Google Drive** (tùy chọn; dùng chung client này):
    - Bật **Google Drive API** cho project (APIs & Services → Library).
-   - Thêm các redirect URI `http://localhost:3000/api/drive/callback` và `https://<frontend>.vercel.app/api/drive/callback`.
+   - Không cần thêm redirect URI: Google quay về callback đăng nhập ở trên (`/api/auth/google/callback`), và callback này chuyển tiếp việc kết nối Drive.
    - Trên consent screen, thêm scope `.../auth/drive.file`. Đây là scope không nhạy cảm. Khi ứng dụng chưa publish, chỉ test user kết nối được và quyền truy cập hết hạn sau 7 ngày. Hãy publish consent screen (**In production**) để kết nối không bị hết hạn. Google có thể hiện cảnh báo "ứng dụng chưa được xác minh" cho tới khi bạn xác minh ứng dụng.
 
 **GitHub**: <https://github.com/settings/developers> → New OAuth App
@@ -537,7 +558,7 @@ Mở <http://localhost:3000> (không phải cổng 4000) và bấm **Đăng ký*
 - Tạo cây riêng cho mỗi người dùng đã có và chuyển người của họ vào đó.
 - Gỡ các vai trò tài khoản cũ (`admin`, `user`, …); chỉ còn vai trò theo từng cây.
 - Đánh dấu email đăng nhập mạng xã hội đã có là đã xác minh.
-- Thêm chỉ mục cho ảnh tải lên và cho việc đổi email.
+- Thêm chỉ mục cho ảnh tải lên, cho việc đổi email và cho liên kết xin quyền truy cập.
 - Gỡ node `(:Settings)` cũ dùng chung toàn ứng dụng; cài đặt giờ được lưu theo từng cây.
 
 Tài khoản đăng ký trước đây bằng email và mật khẩu sẽ được yêu cầu xác minh email ở lần đăng nhập tới. Mọi tài khoản đã có sẽ được yêu cầu đồng ý Thỏa thuận dữ liệu cá nhân ở lần đăng nhập tới.

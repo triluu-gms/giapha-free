@@ -40,9 +40,13 @@ The browser only ever talks to the frontend's domain. Next.js forwards `/api/*` 
 
 (:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?,
         backupFrequency?, backupKeep?, backupUserId?, backupLocale?, backupFolderId?, backupFolderUrl?,
-        backupLastRunAt?, backupLastStatus?, backupLastError?})
+        backupLastRunAt?, backupLastStatus?, backupLastError?,
+        accessLinkHash?, accessLinkToken?, accessLinkCreatedBy?, accessLinkCreatedAt?, accessLinkExpiresAt?,
+        accessRequestsNotifiedAt?})
     // per-tree settings; missing = bulk delete on, 'solar' (an older `calendar` property is the fallback for both)
     // backup*: the Google Drive backup schedule (missing = off)
+    // accessLink*: the shareable request-access link (token hashed for lookup, and sealed so admins can copy it again)
+(:User)-[:REQUESTS_ACCESS {message?, locale, createdAt}]->(:Tree)   // a pending request from that link
 (:User)-[:MEMBER_OF {role: 'owner' | 'admin' | 'editor' | 'viewer', since, personId?, scopeRootId?, scopeDepth?}]->(:Tree)
     // personId: "This is me"; scopeRootId/scopeDepth: an editor limited to one branch (missing = whole tree)
 
@@ -314,6 +318,17 @@ An invitation only works for the account whose **verified** email matches the in
 
 On **Share**, the owner and admins can also change members' roles, remove access, and resend or revoke pending invitations, each within the roles they manage (see the table above). Members, admins included, can leave a shared tree from the tree page.
 
+### Request-access link
+
+Besides email invitations, the owner or an admin can make one shareable link per tree on **Share** (*Request-access link*), valid for 7 days, 30 days, or until turned off. It suits a family group chat, where you don't know everyone's email address.
+
+1. **Share it anywhere.** `https://<site>/join/<token>` shows only the tree's name and who shared it.
+2. **Ask.** The visitor signs in or registers (accepting the personal data agreement and verifying their email as usual), can add a note ("I'm the son of Mr. Hai in Đà Nẵng"), and clicks *Ask for access*. One pending request per person and tree; a person can wait on at most 10 trees, and a tree collects at most 200 pending requests. The visitor can withdraw their request from the same page.
+3. **Notify.** The owner and admins get an email listing the pending requests, at most one per tree an hour, so a busy link doesn't flood them. **Share** in the header shows the number waiting.
+4. **Decide.** Under *Access requests* on **Share**, an owner or admin picks the role (only the owner can grant admin) and clicks *Approve*, or *Decline*. Approving works like accepting an invitation: an existing wider access is kept. The requester gets an email either way, in their language.
+
+The link itself grants nothing, so a leaked link only lets strangers ask. Only a hash of the token is used for lookups. The token is also stored encrypted (key derived from `JWT_SECRET`), so admins can copy the link again later. *Make a new link* and *Turn off* stop the old one, and requests already made stay to be answered. Requests are `(:User)-[:REQUESTS_ACCESS]->(:Tree)` relationships, so they disappear with the account or the tree. Code: [`backend/src/trees/accessRequests.ts`](backend/src/trees/accessRequests.ts).
+
 ### Handing a tree over
 
 The owner can click **Make owner** next to any member on **Share**. After a confirmation, that member becomes the owner and the previous owner stays on as an admin. Both changes happen in one database statement, so a tree always has exactly one owner. Only the new owner can hand it back or remove the previous owner.
@@ -350,6 +365,7 @@ Public (no session):
 | POST | `/api/auth/reset-password` | `{ token, password }`. Sets the new password, signs out other sessions, and signs in |
 | POST | `/api/auth/logout` | Clears the session cookie |
 | GET | `/api/invitations/preview?token=` | Inviter, tree, email and role for the invitation landing page |
+| GET | `/api/join/preview?token=` | For the request-access page: `{ treeName, sharedBy, expired, status }`, where `status` is `anonymous`, `none`, `pending` or `member` (members also get `treeId`) |
 
 Signed in:
 
@@ -365,11 +381,12 @@ Signed in:
 | POST | `/api/auth/delete-account` | — | `{ password }` or, without a password, `{ confirm: email }`. Deletes the account and the trees it owns, then signs out |
 | POST | `/api/auth/resend-verification` | — | Emails a fresh verification link |
 | GET / DELETE | `/api/drive` | verified | Your Google Drive connection for backups: `{ configured, connection: { email, connectedAt } \| null }`. DELETE disconnects and revokes it |
-| GET | `/api/drive/connect?next=` | verified | Starts connecting Google Drive (a page navigation). Google returns to `/api/drive/callback`, which goes back to `next` with `?drive=connected` (or `cancelled`, `noAccess`, `expired`, `failed`) |
+| GET | `/api/drive/connect?next=` | verified | Starts connecting Google Drive (a page navigation). Google returns to the sign-in callback `/api/auth/google/callback`, which goes back to `next` with `?drive=connected` (or `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Accept from the emailed link (also verifies a matching unverified email) |
 | GET | `/api/invitations/mine` | verified | Pending invitations for my email |
+| POST / DELETE | `/api/join/request` | verified | POST `{ token, message? }`: ask for access through a tree's link (`{ status: "pending" }`, or `"member"` with `treeId`). DELETE `?token=` withdraws it. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
 | POST | `/api/invitations/:id/accept` / `decline` | verified | Respond from the in-app banner |
-| GET | `/api/trees` | verified | My trees: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount }` |
+| GET | `/api/trees` | verified | My trees: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount, accessRequestCount }` (`accessRequestCount` is 0 unless you are the owner or an admin) |
 | POST | `/api/trees` | verified | `{ name }`. Creates a new, empty tree that you own and returns its summary. `409` (`code: "treeLimit"`) once you own 20 trees |
 | PATCH | `/api/trees/:treeId` | admin | `{ name }`. Rename |
 | DELETE | `/api/trees/:treeId` | owner | Deletes the tree with its people, relationships, photos (also from storage), invitations and memberships |
@@ -396,6 +413,10 @@ Signed in:
 | DELETE | `/api/trees/:treeId/membership` | editor/viewer | Leave a shared tree |
 | GET | `/api/trees/:treeId/members` | admin | Members and their roles |
 | PATCH / DELETE | `/api/trees/:treeId/members/:userId` | admin | `{ role: "admin" \| "editor" \| "viewer", scope?: { rootId, depth } \| null }`, or remove access. `scope` limits an editor to a branch; omitted or null means the whole tree. Admins can only change editors and viewers, and only the owner can grant `admin` (`403`, `code: "ownerOnly"`) |
+| GET / POST / DELETE | `/api/trees/:treeId/access-link` | admin | The request-access link: `{ url, createdAt, createdByName, expiresAt, expired } \| null`. POST `{ expiresInDays: 7 \| 30 \| null }` makes a new one (the old one stops working); DELETE turns it off |
+| GET | `/api/trees/:treeId/access-requests` | admin | Pending requests: `[{ userId, name, email, message, createdAt }]` |
+| POST | `/api/trees/:treeId/access-requests/:userId/approve` | admin | `{ role, scope? }` as for members (only the owner grants `admin`). Grants access and emails the requester |
+| DELETE | `/api/trees/:treeId/access-requests/:userId` | admin | Declines and emails the requester |
 | GET / POST | `/api/trees/:treeId/invitations` | admin | List, or create `{ email, role: "admin" \| "editor" \| "viewer", scope? }` (sends the email). Only the owner can invite admins |
 | GET | `/api/trees/:treeId/branch` | viewer | `{ scope: null }`, or for an editor limited to a branch `{ scope, people: [{ id, level }] }` (`level` is generations below the branch's first person, `null` for spouses) |
 | POST | `/api/trees/:treeId/invitations/:id/resend` | admin | New link and expiry, email again (admin invitations: owner only) |
@@ -474,7 +495,7 @@ Email and password registration works without this. Callback URLs point at the *
 4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 5. **For backups to Google Drive** (optional; uses the same client):
    - Enable the **Google Drive API** for the project (APIs & Services → Library).
-   - Add the redirect URIs `http://localhost:3000/api/drive/callback` and `https://<frontend>.vercel.app/api/drive/callback`.
+   - No extra redirect URI is needed: Google returns to the sign-in callback above (`/api/auth/google/callback`), which passes Drive connections on.
    - On the consent screen, add the scope `.../auth/drive.file`. It is a non-sensitive scope. Until the app is published, only its test users can connect, and their access expires after 7 days. Publish the consent screen (**In production**) so connections last. Google may show an "unverified app" warning until you verify the app.
 
 **GitHub**: <https://github.com/settings/developers> → New OAuth App
@@ -537,7 +558,7 @@ Open <http://localhost:3000> (not port 4000) and click **Register**. Without Res
 - Creates a private tree for each existing user and moves their people into it.
 - Removes the old account roles (`admin`, `user`, …); only per-tree roles remain.
 - Marks existing social-login emails as verified.
-- Adds the indexes for uploaded photos and email changes.
+- Adds the indexes for uploaded photos, email changes and request-access links.
 - Removes the old app-wide `(:Settings)` node; settings are now stored per tree.
 
 Accounts registered earlier with email and password will be asked to verify their email the next time they sign in. Every existing account is asked to accept the personal data agreement at its next sign-in.

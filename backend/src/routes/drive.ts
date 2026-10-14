@@ -1,22 +1,28 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Router } from 'express';
-import { OAUTH_STATE_COOKIE, readCookie } from '../auth/cookies';
+import { Router, type Request, type Response } from 'express';
+import { OAUTH_STATE_COOKIE } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
-import { signOAuthState, verifyOAuthState } from '../auth/tokens';
+import { signOAuthState, type OAuthState } from '../auth/tokens';
 import { getDriveConnection, removeDriveConnection, saveDriveConnection } from '../backups/backups';
 import { driveAuthorizationUrl, DriveAccessLost, driveConfigured, exchangeDriveCode } from '../backups/userDrive';
 import { HttpError } from '../errors';
 
 // Connecting a user's own Google Drive, for tree backups (see backups/backups.ts).
-// Mounted at /api/drive. The OAuth callback is <PUBLIC_APP_URL>/api/drive/callback,
-// which must be an authorized redirect URI of the Google OAuth client.
+// Mounted at /api/drive.
+//
+// Google returns to the Google sign-in callback (/api/auth/google/callback), which
+// is already an authorized redirect URI of the OAuth client, so Drive needs no
+// extra URI. The state cookie says `provider: 'google-drive'`, and that callback
+// hands the request to finishDriveConnect below.
 
 export const driveRouter = Router();
 
 driveRouter.use(requireAuth, requirePrivacyConsent, requireVerifiedEmail);
 
-const STATE_COOKIE_PATH = '/api/drive';
-const PROVIDER = 'google-drive';
+/** The state cookie's provider for a Drive connection (sign-in uses 'google'). */
+export const DRIVE_STATE_PROVIDER = 'google-drive';
+// The same path as sign-in's state cookie, so the shared callback receives it.
+const STATE_COOKIE_PATH = '/api/auth';
 
 /** Only same-site paths, so a crafted link can't redirect users elsewhere. */
 function safeNextPath(value: unknown): string {
@@ -39,40 +45,49 @@ driveRouter.get('/connect', (req, res) => {
   const codeVerifier = randomBytes(32).toString('base64url');
   res.cookie(
     OAUTH_STATE_COOKIE,
-    signOAuthState({ provider: PROVIDER, state, next: safeNextPath(req.query.next), codeVerifier }),
+    signOAuthState({ provider: DRIVE_STATE_PROVIDER, state, next: safeNextPath(req.query.next), codeVerifier }),
     { httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(driveAuthorizationUrl(state, createHash('sha256').update(codeVerifier).digest('base64url')));
 });
 
-// GET /api/drive/callback?code=...&state=... -> back to `next` with ?drive=connected or ?drive=<error>
-driveRouter.get('/callback', async (req, res) => {
-  const raw = readCookie(req, OAUTH_STATE_COOKIE);
-  const saved = raw ? verifyOAuthState(raw) : null;
-  res.clearCookie(OAUTH_STATE_COOKIE, { path: STATE_COOKIE_PATH });
-  const next = safeNextPath(saved?.next);
+/**
+ * The end of a Drive connection, called from /api/auth/google/callback when its
+ * state cookie (already read and cleared there) is a Drive one. Goes back to
+ * `next` with ?drive=connected, or ?drive=<what went wrong>.
+ */
+export async function finishDriveConnect(req: Request, res: Response, saved: OAuthState): Promise<void> {
+  const next = safeNextPath(saved.next);
+  const back = (result: string) => res.redirect(withParam(next, 'drive', result));
 
-  if (!saved || saved.provider !== PROVIDER || !saved.codeVerifier) {
-    res.redirect(withParam(next, 'drive', 'expired'));
-    return;
-  }
   if (typeof req.query.error === 'string') {
-    res.redirect(withParam(next, 'drive', req.query.error === 'access_denied' ? 'cancelled' : 'failed'));
+    back(req.query.error === 'access_denied' ? 'cancelled' : 'failed');
     return;
   }
-  if (typeof req.query.code !== 'string' || req.query.state !== saved.state) {
-    res.redirect(withParam(next, 'drive', 'failed'));
+  if (!saved.codeVerifier || typeof req.query.code !== 'string' || req.query.state !== saved.state) {
+    back('failed');
+    return;
+  }
+  // The same checks as the /api/drive routes: signed in, agreement accepted, email verified.
+  try {
+    await requireAuth(req, res, () => undefined);
+  } catch {
+    res.redirect(`/login?next=${encodeURIComponent(next)}`);
+    return;
+  }
+  if (!req.user || req.user.consentRequired || req.user.verificationRequired) {
+    back('failed');
     return;
   }
   try {
     const { refreshToken, email } = await exchangeDriveCode(req.query.code, saved.codeVerifier);
-    await saveDriveConnection(req.user!.id, refreshToken, email);
-    res.redirect(withParam(next, 'drive', 'connected'));
+    await saveDriveConnection(req.user.id, refreshToken, email);
+    back('connected');
   } catch (err) {
     console.error('Google Drive connection failed:', err);
-    res.redirect(withParam(next, 'drive', err instanceof DriveAccessLost ? 'noAccess' : 'failed'));
+    back(err instanceof DriveAccessLost ? 'noAccess' : 'failed');
   }
-});
+}
 
 // DELETE /api/drive -> disconnects (and revokes) the user's Drive
 driveRouter.delete('/', async (req, res) => {

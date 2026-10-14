@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { cachedGraph, DEFAULT_DEPTH, fetchGraph } from '@/lib/graphCache';
 import { computeKinship } from '@/lib/kinship';
 import { takeRequestedSelection } from '@/lib/selection';
 import type { TreeData } from '@/lib/types';
@@ -18,8 +19,6 @@ import PersonPanel from './PersonPanel';
 import { useCurrentTree } from './TreeProvider';
 
 const DEPTHS = [1, 2, 3, 4, 5, 6, 7, 8];
-/** Family hops shown around a person: parents up to great-grandparents, children down to great-grandchildren, siblings, uncles and aunts. */
-const DEFAULT_DEPTH = 3;
 const KINSHIP_PREF = 'familyTree.showKinship';
 
 export default function TreeExplorer() {
@@ -34,7 +33,10 @@ export default function TreeExplorer() {
   // Compact on PC and tablet, left to right on phones; adjustable under "Layout".
   const layoutPrefs = useLayoutPrefs();
 
-  const [tree, setTree] = useState<TreeData>({ nodes: [], edges: [] });
+  // Drawn straight away from the last copy of this view, if there is one (refreshed below).
+  const [tree, setTree] = useState<TreeData>(
+    () => cachedGraph(activeTree.id, activeTree.myPersonId, DEFAULT_DEPTH) ?? { nodes: [], edges: [] },
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // If you said who you are in this tree ("This is me"), it opens around you, a few
@@ -105,9 +107,11 @@ export default function TreeExplorer() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    treeApi
-      .getGraph(rootId ?? undefined, depth)
+    // Show the last copy of this view at once; the fresh one replaces it when it arrives.
+    const cached = cachedGraph(activeTree.id, rootId, depth);
+    if (cached) setTree(cached);
+    setLoading(!cached);
+    fetchGraph(treeApi, activeTree.id, rootId, depth)
       .then((data) => {
         if (cancelled) return;
         setTree(data);
@@ -118,7 +122,7 @@ export default function TreeExplorer() {
     return () => {
       cancelled = true;
     };
-  }, [treeApi, rootId, depth, version]);
+  }, [treeApi, activeTree.id, rootId, depth, version]);
 
   // On phones the side panel becomes a bottom sheet over the tree. It opens when you
   // pick someone or start adding a person, and ✕ only hides it, so the selection

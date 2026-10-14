@@ -59,9 +59,23 @@ export default function Header() {
     }
   }
 
-  const navLink = (href: string, label: string) => (
-    <Link href={href} className={pathname === href ? 'active' : undefined} aria-current={pathname === href ? 'page' : undefined}>
+  const navLink = (href: string, label: string, badge = 0) => (
+    <Link
+      href={href}
+      className={pathname === href ? 'active' : undefined}
+      aria-current={pathname === href ? 'page' : undefined}
+      // Pages are rendered per request (the language cookie), so the default prefetch loads
+      // nothing. The tree is the page people go back to most: prefetch it fully (its code
+      // and payload), so the click doesn't wait on the server before asking for the graph.
+      prefetch={href === '/' ? true : undefined}
+    >
       {label}
+      {badge > 0 && (
+        <span className="nav-badge" title={t('accessRequest.badge', { count: badge })}>
+          {badge}
+          <span className="sr-only">{t('accessRequest.badge', { count: badge })}</span>
+        </span>
+      )}
     </Link>
   );
 
@@ -127,7 +141,7 @@ export default function Header() {
             {navLink('/', t('nav.tree'))}
             {navLink('/people', t('nav.people'))}
             {canEdit && !branchOnly && navLink('/import', t('nav.import'))}
-            {canManage && navLink('/share', t('nav.share'))}
+            {canManage && navLink('/share', t('nav.share'), current?.accessRequestCount ?? 0)}
             {navLink('/settings', t('nav.settings'))}
           </nav>
         )}

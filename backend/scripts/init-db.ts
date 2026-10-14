@@ -17,6 +17,7 @@ const schema = [
   'CREATE INDEX invitation_token IF NOT EXISTS FOR (i:Invitation) ON (i.tokenHash)',
   'CREATE INDEX invitation_email IF NOT EXISTS FOR (i:Invitation) ON (i.email)',
   'CREATE INDEX invitation_tree IF NOT EXISTS FOR (i:Invitation) ON (i.treeId)',
+  'CREATE INDEX tree_access_link IF NOT EXISTS FOR (t:Tree) ON (t.accessLinkHash)',
   'DROP CONSTRAINT settings_id_unique IF EXISTS',
   'CREATE CONSTRAINT photo_id_unique IF NOT EXISTS FOR (ph:Photo) REQUIRE ph.id IS UNIQUE',
   'CREATE INDEX photo_tree IF NOT EXISTS FOR (ph:Photo) ON (ph.treeId)',

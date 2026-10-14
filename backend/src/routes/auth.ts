@@ -46,6 +46,7 @@ import {
   tokenSchema,
 } from '../schemas';
 import { getReminderPreferences, updateReminderPreferences } from '../reminders/preferences';
+import { DRIVE_STATE_PROVIDER, finishDriveConnect } from './drive';
 import { acceptInvitation, findInvitationByToken } from '../trees/invitations';
 
 export const authRouter = Router();
@@ -95,6 +96,11 @@ authRouter.get('/:provider/callback', async (req, res) => {
 
   const fail = (message: string) => res.redirect(`/login?error=${encodeURIComponent(message)}`);
 
+  // Connecting Google Drive for backups comes back through this same Google callback.
+  if (saved?.provider === DRIVE_STATE_PROVIDER && req.params.provider === 'google') {
+    await finishDriveConnect(req, res, saved);
+    return;
+  }
   if (!saved || saved.provider !== req.params.provider) {
     fail('Your login session expired. Please try again.');
     return;
