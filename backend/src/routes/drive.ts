@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { OAUTH_STATE_COOKIE } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
-import { signOAuthState, type OAuthState } from '../auth/tokens';
+import { sealOAuthState, type OAuthState } from '../auth/tokens';
 import { getDriveConnection, removeDriveConnection, saveDriveConnection } from '../backups/backups';
 import { driveAuthorizationUrl, DriveAccessLost, driveConfigured, exchangeDriveCode } from '../backups/userDrive';
 import { HttpError } from '../errors';
@@ -45,7 +45,7 @@ driveRouter.get('/connect', (req, res) => {
   const codeVerifier = randomBytes(32).toString('base64url');
   res.cookie(
     OAUTH_STATE_COOKIE,
-    signOAuthState({ provider: DRIVE_STATE_PROVIDER, state, next: safeNextPath(req.query.next), codeVerifier }),
+    sealOAuthState({ provider: DRIVE_STATE_PROVIDER, state, next: safeNextPath(req.query.next), codeVerifier }),
     { httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(driveAuthorizationUrl(state, createHash('sha256').update(codeVerifier).digest('base64url')));

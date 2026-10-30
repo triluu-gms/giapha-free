@@ -21,10 +21,27 @@ export const config = {
     // session cookie is first-party. OAuth callbacks are built from it.
     publicAppUrl: trimSlash(process.env.PUBLIC_APP_URL || 'http://localhost:3000'),
   },
+  // Verified accounts with these emails (comma-separated) can connect the Gmail account
+  // emails are sent from. Empty: nobody, as there is no admin by default.
+  adminEmails: (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
   email: {
+    // 'resend' (default) or 'gmail': one Gmail account through the Gmail API (email/gmail.ts).
+    provider: ((process.env.EMAIL_PROVIDER ?? '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'resend') as
+      | 'resend'
+      | 'gmail',
     // https://resend.com — when empty, emails are printed to the console instead.
     resendApiKey: process.env.RESEND_API_KEY ?? '',
     from: process.env.EMAIL_FROM || 'Family Tree <onboarding@resend.dev>',
+    gmail: {
+      // An admin connects the sending account through the Google sign-in OAuth client
+      // (see email/gmail.ts). When set, it must be this address.
+      sender: (process.env.GMAIL_SENDER ?? '').trim().toLowerCase(),
+      // Instead of connecting: a refresh token of GMAIL_SENDER with the gmail.send scope.
+      refreshToken: process.env.GMAIL_REFRESH_TOKEN ?? '',
+    },
   },
   oauth: {
     google: {

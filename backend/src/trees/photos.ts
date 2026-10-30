@@ -45,9 +45,12 @@ export function detectImageType(body: Buffer) {
 export const photoUrl = (treeId: string, photoId: string) => `/api/trees/${treeId}/photos/${photoId}`;
 
 /** The photo id when `url` is one of this tree's uploaded photos, else null (e.g. an external link). */
-export function ownPhotoId(treeId: string, url: string | null | undefined): string | null {
+export function ownPhotoId(treeId: string, url: unknown): string | null {
+  // Check the type at run time, not just in TypeScript: a value that isn't a string
+  // (e.g. an array from a tampered request) must never reach the string checks below.
+  if (typeof url !== 'string') return null;
   const prefix = photoUrl(treeId, '');
-  if (!url?.startsWith(prefix)) return null;
+  if (!url.startsWith(prefix)) return null;
   const id = url.slice(prefix.length);
   return /^[\w-]{1,100}$/.test(id) ? id : null;
 }
@@ -104,7 +107,8 @@ export async function removeStoredFiles(refs: string[]): Promise<void> {
  * Call after people stop using these photo URLs (photo replaced, person deleted).
  * Each of this tree's uploaded photos that no person uses any more is deleted.
  */
-export async function releasePhotos(treeId: string, urls: (string | null | undefined)[]): Promise<void> {
+export async function releasePhotos(treeId: string, urls: unknown[]): Promise<void> {
+  if (!Array.isArray(urls)) return;
   const ids = [...new Set(urls.map((url) => ownPhotoId(treeId, url)).filter((id): id is string => !!id))];
   if (!ids.length) return;
   try {

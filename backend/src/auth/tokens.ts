@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { open, seal } from '../backups/secretBox';
 import { config } from '../config';
 
 const ISSUER = 'family-tree-api';
@@ -47,24 +48,26 @@ export interface OAuthState {
   codeVerifier?: string;
 }
 
-export function signOAuthState(data: OAuthState): string {
-  return jwt.sign(data, secret(), {
-    algorithm: 'HS256',
-    issuer: ISSUER,
-    audience: STATE_AUDIENCE,
-    expiresIn: '10m',
-  });
+const STATE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * The state cookie's value, encrypted (AES-256-GCM), not just signed: it carries the
+ * PKCE code verifier, a secret that must not be readable from the browser's cookie
+ * store. GCM also authenticates it, so a tampered or forged value doesn't open.
+ */
+export function sealOAuthState(data: OAuthState): string {
+  return seal(JSON.stringify({ ...data, aud: STATE_AUDIENCE, exp: Date.now() + STATE_TTL_MS }), 'oauth-state');
 }
 
-export function verifyOAuthState(token: string): OAuthState | null {
+/** The state, or null if the cookie was tampered with, made with another key, or expired. */
+export function openOAuthState(sealed: string): OAuthState | null {
+  const plain = open(sealed, 'oauth-state');
+  if (!plain) return null;
   try {
-    return jwt.verify(token, secret(), {
-      algorithms: ['HS256'],
-      issuer: ISSUER,
-      audience: STATE_AUDIENCE,
-    }) as OAuthState;
-  } catch (err) {
-    if (err instanceof jwt.JsonWebTokenError) return null;
-    throw err;
+    const { aud, exp, ...state } = JSON.parse(plain) as OAuthState & { aud?: string; exp?: number };
+    if (aud !== STATE_AUDIENCE || typeof exp !== 'number' || exp < Date.now()) return null;
+    return state;
+  } catch {
+    return null;
   }
 }

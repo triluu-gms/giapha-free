@@ -303,7 +303,7 @@ The editor still **sees** the whole tree. They can **change** only people in the
 The API enforces all of this (`trees/branch.ts`, `403` with `code: "outsideBranch"`). The UI only offers what is allowed. If the branch's first person is deleted, that editor can change no one until the owner picks a new branch. Accepting an invitation keeps the wider access: owner, then editor of the whole tree, then editor of a branch, then viewer. If both the current access and the invitation are branches, the invitation's branch is used.
 
 - Accounts only meet through invitations: an owner invites someone, and only then can that person see the tree (and the owner sees them as a member on **Share**).
-- No page or API lists accounts. Running the app (database access, deploy settings) is the only "admin" level, and it lives outside the app.
+- No page or API lists accounts. Running the app (database access, deploy settings) is the only "admin" level, and it lives outside the app. The one exception is opt-in: accounts listed in `ADMIN_EMAILS` can connect the Gmail account emails are sent from (through `/api/admin/email`), and nothing else.
 
 ### Invitation flow
 
@@ -479,6 +479,18 @@ Without `RESEND_API_KEY`, the backend **prints emails to its console** instead o
 2. Under **Domains**, add and verify a domain you own (a few DNS records). Then set `EMAIL_FROM`, e.g. `Family Tree <noreply@yourdomain.com>`.
    - Until a domain is verified, Resend's test sender `onboarding@resend.dev` only delivers to the email address of your own Resend account.
 
+### Or send with Gmail
+
+Emails can also go out from one Gmail or Google Workspace account, through the Gmail API and the Google sign-in OAuth client (step 3), with no extra redirect URI:
+
+1. In the same Google Cloud project, enable the **Gmail API**. On the OAuth consent screen, add the scope `https://www.googleapis.com/auth/gmail.send`. The app can only send with it, never read the mailbox.
+   - While the consent screen is in **Testing**, Google expires refresh tokens after 7 days. Publish the app (`gmail.send` is a sensitive scope, so Google reviews it), or make it **Internal** on Workspace.
+2. Set `ADMIN_EMAILS` to the account(s) that may manage the app's own settings (comma-separated, verified emails). Optionally set `GMAIL_SENDER` to allow only that Gmail address.
+3. Signed in as an admin, open `<PUBLIC_APP_URL>/api/admin/email/gmail/connect` in the browser and pick the account to send from. You come back to `/account?gmail=connected`.
+4. Set `EMAIL_PROVIDER=gmail`. `GET /api/admin/email` shows the current state.
+
+ The Gmail refresh token is stored encrypted like Drive's (`MailSender`). Instead of connecting in the app, you can set `GMAIL_SENDER` and `GMAIL_REFRESH_TOKEN`.
+
 To use another provider (SES, SendGrid, SMTP), change only [`backend/src/email/mailer.ts`](backend/src/email/mailer.ts).
 
 ## 3. Create the OAuth apps (optional)
@@ -617,6 +629,7 @@ You can also deploy from the CLI: `npm i -g vercel`, then run `vercel` inside ea
 - The session token lives only in an HttpOnly cookie. Page scripts can't read it, and it never appears in a URL or in `localStorage`.
 - The backend is still reachable at its own `*.vercel.app` URL, but the session cookie belongs to the frontend's domain and is never sent there.
 - Changing `JWT_SECRET` signs everyone out immediately.
+- Requests are rate-limited per client IP with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 a minute for the whole API, 120 a minute for `/api/auth`, and 30 per 15 minutes for sign-in, registration, password, email and account-deletion routes and the Google/GitHub sign-in. Over the limit, the API answers `429` with `code: "rateLimited"`. Counters are in memory, so on serverless hosts each warm instance counts on its own.
 - Signing out clears the cookie in that browser. Changing or resetting the password signs the account out everywhere else. To cut someone off from your tree, remove them on **Share**.
 - The Neo4j driver is a singleton that warm serverless invocations reuse.
 - `npm run build && npm start` in `backend/` runs the API as a normal Node server, for example on Render, Railway or Fly.io.

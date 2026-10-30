@@ -617,6 +617,7 @@ Cũng có thể triển khai bằng CLI: `npm i -g vercel`, rồi chạy `vercel
 - Token phiên chỉ nằm trong cookie HttpOnly. Script trên trang không đọc được nó, và nó không bao giờ xuất hiện trong URL hay `localStorage`.
 - Backend vẫn truy cập được qua URL `*.vercel.app` riêng của nó, nhưng cookie phiên thuộc tên miền của frontend và không bao giờ được gửi tới đó.
 - Đổi `JWT_SECRET` sẽ đăng xuất mọi người ngay lập tức.
+- Số yêu cầu được giới hạn theo IP của người dùng bằng [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 yêu cầu mỗi phút cho toàn bộ API, 120 mỗi phút cho `/api/auth`, và 30 mỗi 15 phút cho đăng nhập, đăng ký, mật khẩu, email, xóa tài khoản và đăng nhập Google/GitHub. Vượt giới hạn, API trả `429` với `code: "rateLimited"`. Bộ đếm nằm trong bộ nhớ, nên trên máy chủ serverless mỗi instance đang chạy đếm riêng.
 - Đăng xuất xóa cookie trong trình duyệt đó. Đổi hoặc đặt lại mật khẩu đăng xuất tài khoản ở mọi nơi khác. Muốn cắt quyền của ai đó với cây của bạn, gỡ họ ở trang **Chia sẻ**.
 - Neo4j driver là một singleton được các lần gọi serverless đang chạy dùng lại.
 - `npm run build && npm start` trong `backend/` chạy API như một máy chủ Node bình thường, ví dụ trên Render, Railway hoặc Fly.io.

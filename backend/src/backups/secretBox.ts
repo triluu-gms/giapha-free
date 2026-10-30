@@ -3,13 +3,14 @@ import { config } from '../config';
 
 // Secrets kept so they can be used or shown again later are stored encrypted
 // (AES-256-GCM): Google Drive refresh tokens, which let the server act on a
-// user's Drive, and "request access" link tokens, which admins copy again.
+// user's Drive, the Gmail sender's refresh token, "request access" link tokens, which
+// admins copy again, and the OAuth state cookie (it carries the PKCE code verifier).
 // The key is derived from JWT_SECRET and the purpose: changing JWT_SECRET makes
 // them unreadable (admins then reconnect Drive, or make a new link).
 
 const VERSION = 'v1';
 
-export type SecretPurpose = 'drive-refresh-token' | 'access-link';
+export type SecretPurpose = 'drive-refresh-token' | 'access-link' | 'gmail-refresh-token' | 'oauth-state';
 
 function key(purpose: SecretPurpose): Buffer {
   const secret = config.auth.jwtSecret;

@@ -10,6 +10,7 @@ import {
   requirePrivacyConsent,
   requireVerifiedEmail,
 } from './auth/middleware';
+import { apiRateLimit } from './auth/rateLimit';
 import { config } from './config';
 import { getDriver, query } from './db';
 import { HttpError } from './errors';
@@ -18,6 +19,7 @@ import { driveConfigured } from './backups/userDrive';
 import { runReminders } from './reminders/run';
 import { authRouter } from './routes/auth';
 import { driveRouter } from './routes/drive';
+import { adminEmailRouter } from './routes/adminEmail';
 import { invitationsRouter } from './routes/invitations';
 import { joinRouter } from './routes/join';
 import { treesRouter } from './routes/trees';
@@ -32,6 +34,8 @@ app.set('trust proxy', true);
 app.use('/api/trees/:treeId/import', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use('/api', requireCsrfHeader);
+// Every API request is rate-limited per client IP; auth routes have tighter limits of their own.
+app.use('/api', apiRateLimit);
 
 // ---- Public routes ----
 app.get('/', (_req, res) => {
@@ -93,6 +97,8 @@ app.get('/api/cron/reminders', async (req, res) => {
 app.use('/api/auth', authRouter);
 // The user's own Google Drive, for tree backups; checks the session inside the router.
 app.use('/api/drive', driveRouter);
+// Connecting the Gmail account emails are sent from; ADMIN_EMAILS only.
+app.use('/api/admin/email', adminEmailRouter);
 // Preview is public; accepting/declining checks the session inside the router.
 app.use('/api/invitations', invitationsRouter);
 // "Request access" links: the preview is public, asking checks the session inside the router.
@@ -101,7 +107,7 @@ app.use('/api/join', joinRouter);
 // ---- Protected routes: a valid session cookie, the accepted data agreement and a verified email ----
 // Tree content is scoped to /api/trees/:treeId and the caller's membership of it.
 app.use('/api/trees', requireAuthForTrees, requirePrivacyConsent, requireVerifiedEmail, treesRouter);
-// No application-wide admin: there is no route that lists or manages other accounts.
+// No route lists or manages other accounts, admins (ADMIN_EMAILS) included.
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });

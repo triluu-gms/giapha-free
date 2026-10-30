@@ -5,8 +5,14 @@ import { requireAuth } from '../auth/middleware';
 import { getDummyHash, hashPassword, verifyPassword } from '../auth/passwords';
 import { PRIVACY_VERSION } from '../auth/privacy';
 import { getProvider, getProviders } from '../auth/providers';
-import { assertLoginAllowed, clearLoginFailures, recordLoginFailure } from '../auth/rateLimit';
-import { signAccessToken, signOAuthState, verifyOAuthState } from '../auth/tokens';
+import {
+  assertLoginAllowed,
+  authRateLimit,
+  clearLoginFailures,
+  recordLoginFailure,
+  sensitiveAuthRateLimit,
+} from '../auth/rateLimit';
+import { signAccessToken, sealOAuthState, openOAuthState } from '../auth/tokens';
 import {
   acceptPrivacy,
   cancelEmailChange,
@@ -47,9 +53,14 @@ import {
 } from '../schemas';
 import { getReminderPreferences, updateReminderPreferences } from '../reminders/preferences';
 import { DRIVE_STATE_PROVIDER, finishDriveConnect } from './drive';
+import { finishGmailConnect, GMAIL_STATE_PROVIDER } from './adminEmail';
 import { acceptInvitation, findInvitationByToken } from '../trees/invitations';
 
 export const authRouter = Router();
+
+// Every auth request is rate-limited per IP; sign-in, registration, password and
+// email routes also have the stricter sensitiveAuthRateLimit (see auth/rateLimit.ts).
+authRouter.use(authRateLimit);
 
 const STATE_COOKIE_PATH = '/api/auth';
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -71,8 +82,8 @@ authRouter.get('/providers', (_req, res) => {
 
 // GET /api/auth/:provider/login?next=/people
 // Login and registration are the same flow: unknown users are registered.
-authRouter.get('/:provider/login', (req, res) => {
-  const provider = getProvider(req.params.provider);
+authRouter.get('/:provider/login', sensitiveAuthRateLimit, (req, res) => {
+  const provider = getProvider(String(req.params.provider));
   if (!provider) throw notFound('Login provider');
 
   const state = randomBytes(16).toString('base64url');
@@ -81,7 +92,7 @@ authRouter.get('/:provider/login', (req, res) => {
 
   res.cookie(
     OAUTH_STATE_COOKIE,
-    signOAuthState({ provider: provider.id, state, next: safeNextPath(req.query.next), codeVerifier }),
+    sealOAuthState({ provider: provider.id, state, next: safeNextPath(req.query.next), codeVerifier }),
     { httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(provider.authorizationUrl({ state, redirectUri: callbackUrl(provider.id), codeChallenge }));
@@ -89,9 +100,9 @@ authRouter.get('/:provider/login', (req, res) => {
 
 // GET /api/auth/:provider/callback?code=...&state=...
 // Sets the session cookie and returns the user to the page they started from.
-authRouter.get('/:provider/callback', async (req, res) => {
+authRouter.get('/:provider/callback', sensitiveAuthRateLimit, async (req, res) => {
   const raw = readCookie(req, OAUTH_STATE_COOKIE);
-  const saved = raw ? verifyOAuthState(raw) : null;
+  const saved = raw ? openOAuthState(raw) : null;
   res.clearCookie(OAUTH_STATE_COOKIE, { path: STATE_COOKIE_PATH });
 
   const fail = (message: string) => res.redirect(`/login?error=${encodeURIComponent(message)}`);
@@ -99,6 +110,11 @@ authRouter.get('/:provider/callback', async (req, res) => {
   // Connecting Google Drive for backups comes back through this same Google callback.
   if (saved?.provider === DRIVE_STATE_PROVIDER && req.params.provider === 'google') {
     await finishDriveConnect(req, res, saved);
+    return;
+  }
+  // So does connecting the Gmail account emails are sent from.
+  if (saved?.provider === GMAIL_STATE_PROVIDER && req.params.provider === 'google') {
+    await finishGmailConnect(req, res, saved);
     return;
   }
   if (!saved || saved.provider !== req.params.provider) {
@@ -142,7 +158,7 @@ async function sendVerification(user: { id: string; email: string | null; name: 
 // Registering from an invitation sent to the same address counts as proof of
 // ownership: the email is verified and the invitation accepted right away.
 // Otherwise a verification email is sent and the tree stays locked until it is confirmed.
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', sensitiveAuthRateLimit, async (req, res) => {
   const { name, email, password, inviteToken, privacyVersion } = registerSchema.parse(req.body);
   assertCurrentPrivacyVersion(privacyVersion);
   const invitation = inviteToken ? await findInvitationByToken(inviteToken) : null;
@@ -174,7 +190,7 @@ authRouter.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/verify-email { token } -> confirms the address from the emailed link
-authRouter.post('/verify-email', async (req, res) => {
+authRouter.post('/verify-email', sensitiveAuthRateLimit, async (req, res) => {
   const { token } = tokenSchema.parse(req.body);
   const user = await verifyEmailToken(token);
   if (!user) {
@@ -184,7 +200,7 @@ authRouter.post('/verify-email', async (req, res) => {
 });
 
 // POST /api/auth/resend-verification -> emails a fresh link (at most once a minute)
-authRouter.post('/resend-verification', requireAuth, async (req, res) => {
+authRouter.post('/resend-verification', sensitiveAuthRateLimit, requireAuth, async (req, res) => {
   const user = req.user!;
   if (!user.verificationRequired) {
     res.json({ sent: false, alreadyVerified: true });
@@ -204,7 +220,7 @@ authRouter.post('/resend-verification', requireAuth, async (req, res) => {
 });
 
 // POST /api/auth/login { email, password }
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', sensitiveAuthRateLimit, async (req, res) => {
   const { email, password } = passwordLoginSchema.parse(req.body);
   const limitKey = `${req.ip}|${email}`;
   assertLoginAllowed(limitKey);
@@ -225,7 +241,7 @@ authRouter.post('/login', async (req, res) => {
 
 // POST /api/auth/forgot-password { email } -> emails a reset link if the account exists.
 // The answer is the same either way, so the form doesn't reveal who has an account.
-authRouter.post('/forgot-password', async (req, res) => {
+authRouter.post('/forgot-password', sensitiveAuthRateLimit, async (req, res) => {
   const { email } = forgotPasswordSchema.parse(req.body);
   const issued = await issuePasswordResetToken(email, RESEND_COOLDOWN_MS);
   if (issued) {
@@ -242,7 +258,7 @@ authRouter.post('/forgot-password', async (req, res) => {
 
 // POST /api/auth/reset-password { token, password } -> sets the new password and signs in.
 // Every other session of the account is signed out.
-authRouter.post('/reset-password', async (req, res) => {
+authRouter.post('/reset-password', sensitiveAuthRateLimit, async (req, res) => {
   const { token, password } = resetPasswordSchema.parse(req.body);
   const user = await resetPasswordWithToken(token, await hashPassword(password));
   if (!user) {
@@ -254,7 +270,7 @@ authRouter.post('/reset-password', async (req, res) => {
 
 // POST /api/auth/change-password { currentPassword, newPassword }
 // Keeps this session signed in (with a fresh cookie) and signs out all others.
-authRouter.post('/change-password', requireAuth, async (req, res) => {
+authRouter.post('/change-password', sensitiveAuthRateLimit, requireAuth, async (req, res) => {
   const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
   const user = req.user!;
   const limitKey = `change|${user.id}`;
@@ -296,7 +312,7 @@ async function assertCurrentPassword(user: AuthUser, password: string | undefine
 // POST /api/auth/email { email, password? } -> emails a confirmation link to the new
 // address; the account keeps its old email until that link is clicked. The old
 // address is told, so a change nobody asked for doesn't go unnoticed.
-authRouter.post('/email', requireAuth, async (req, res) => {
+authRouter.post('/email', sensitiveAuthRateLimit, requireAuth, async (req, res) => {
   const { email, password } = emailChangeSchema.parse(req.body);
   const user = req.user!;
   if (email === user.email) throw new HttpError(400, 'That is already your email address', 'sameEmail');
@@ -321,7 +337,7 @@ authRouter.post('/email', requireAuth, async (req, res) => {
 
 // POST /api/auth/email/confirm { token } -> the new address becomes the account's email.
 // No session needed: the link may be opened on another device, and it proves itself.
-authRouter.post('/email/confirm', async (req, res) => {
+authRouter.post('/email/confirm', sensitiveAuthRateLimit, async (req, res) => {
   const { token } = tokenSchema.parse(req.body);
   const user = await confirmEmailChange(token);
   if (!user) {
@@ -338,7 +354,7 @@ authRouter.delete('/email', requireAuth, async (req, res) => {
 // POST /api/auth/delete-account { password? | confirm? } -> deletes the account and every
 // tree it owns (with their people, photos and invitations), and signs out. Accounts
 // with a password confirm with it; Google/GitHub-only accounts type their email.
-authRouter.post('/delete-account', requireAuth, async (req, res) => {
+authRouter.post('/delete-account', sensitiveAuthRateLimit, requireAuth, async (req, res) => {
   const { password, confirm } = deleteAccountSchema.parse(req.body);
   const user = req.user!;
   if (user.hasPassword) {

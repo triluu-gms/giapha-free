@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { gmailConfigured, sendWithGmail } from './gmail';
 
 export interface EmailMessage {
   to: string;
@@ -8,10 +9,16 @@ export interface EmailMessage {
 }
 
 /**
- * Sends through Resend's HTTP API (no SDK needed). Without RESEND_API_KEY the
- * message is printed to the console, which keeps local development working.
+ * Sends with EMAIL_PROVIDER: Gmail (gmail.ts), or Resend's HTTP API (no SDK needed).
+ * Without RESEND_API_KEY, Resend's messages are printed to the console instead,
+ * which keeps local development working.
  */
 export async function sendEmail(message: EmailMessage): Promise<void> {
+  if (config.email.provider === 'gmail') {
+    if (!gmailConfigured()) throw new Error('Sending with Gmail needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET');
+    await sendWithGmail(message);
+    return;
+  }
   if (!config.email.resendApiKey) {
     console.log(
       `\n──── email (RESEND_API_KEY not set, not sent) ────\nTo: ${message.to}\nSubject: ${message.subject}\n\n${message.text}\n──────────────────────────────────────────────\n`,
