@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { OAUTH_STATE_COOKIE, secureCookie } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
-import { pkceChallenge, pkceVerifier, sealOAuthState, type OAuthState } from '../auth/tokens';
+import { flowOwnerTag, isFlowOwner, pkceChallenge, pkceVerifier, sealOAuthState, type OAuthState } from '../auth/tokens';
 import type { AuthUser } from '../auth/users';
 import { config } from '../config';
 import {
@@ -65,7 +65,7 @@ adminEmailRouter.get('/gmail/connect', (req, res) => {
   const state = randomBytes(16).toString('base64url');
   res.cookie(
     OAUTH_STATE_COOKIE,
-    sealOAuthState({ provider: GMAIL_STATE_PROVIDER, state, next: BACK_PATH, userId: req.user!.id }),
+    sealOAuthState({ provider: GMAIL_STATE_PROVIDER, state, next: BACK_PATH, owner: flowOwnerTag(req.user!.id) }),
     { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   // PKCE: the verifier is derived from the state on the server, so the cookie doesn't carry it.
@@ -98,7 +98,7 @@ export async function finishGmailConnect(req: Request, res: Response, saved: OAu
   if (
     !gmailConfigured() ||
     !req.user ||
-    req.user.id !== saved.userId || // only the admin who started connecting
+    !isFlowOwner(saved, req.user.id) || // only the admin who started connecting
     req.user.consentRequired ||
     req.user.verificationRequired ||
     !isAdmin(req.user)

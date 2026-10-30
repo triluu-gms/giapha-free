@@ -1,4 +1,4 @@
-import { createHash, createHmac, hkdfSync } from 'node:crypto';
+import { createHash, createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { open, seal } from '../backups/secretBox';
 import { config } from '../config';
@@ -47,10 +47,30 @@ export interface OAuthState {
   /** Same-site path to return to after login. */
   next: string;
   /**
-   * Connecting Drive or the Gmail sender: the account that started it. The callback
-   * links the connection only to that account, not to whoever is signed in by then.
+   * Connecting Drive or the Gmail sender: a tag of the account that started it (see
+   * flowOwnerTag), not the account id itself. The callback links the connection only to
+   * that account, not to whoever is signed in on the browser by then.
    */
-  userId?: string;
+  owner?: string;
+}
+
+const flowOwnerKey = () => Buffer.from(hkdfSync('sha256', secret(), 'family-tree', 'oauth-flow-owner', 32));
+
+/**
+ * A tag that identifies the account that started an OAuth flow, for its state cookie:
+ * an HMAC of the account id with a server-only key. The cookie then holds nothing that
+ * names an account, and nobody without the key can make a tag for another one.
+ */
+export function flowOwnerTag(accountId: string): string {
+  return createHmac('sha256', flowOwnerKey()).update(accountId).digest('base64url');
+}
+
+/** Whether the signed-in account is the one that started the flow (constant-time comparison). */
+export function isFlowOwner(saved: OAuthState, accountId: string): boolean {
+  if (!saved.owner) return false;
+  const expected = Buffer.from(flowOwnerTag(accountId));
+  const given = Buffer.from(saved.owner);
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
 const STATE_TTL_MS = 10 * 60 * 1000;

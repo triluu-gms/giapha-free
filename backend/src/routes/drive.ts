@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { OAUTH_STATE_COOKIE, secureCookie } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
-import { pkceChallenge, pkceVerifier, sealOAuthState, type OAuthState } from '../auth/tokens';
+import { flowOwnerTag, isFlowOwner, pkceChallenge, pkceVerifier, sealOAuthState, type OAuthState } from '../auth/tokens';
 import { getDriveConnection, removeDriveConnection, saveDriveConnection } from '../backups/backups';
 import { driveAuthorizationUrl, DriveAccessLost, driveConfigured, exchangeDriveCode } from '../backups/userDrive';
 import { HttpError } from '../errors';
@@ -48,7 +48,7 @@ driveRouter.get('/connect', (req, res) => {
       provider: DRIVE_STATE_PROVIDER,
       state,
       next: safeNextPath(req.query.next),
-      userId: req.user!.id,
+      owner: flowOwnerTag(req.user!.id),
     }),
     { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
@@ -81,7 +81,7 @@ export async function finishDriveConnect(req: Request, res: Response, saved: OAu
     return;
   }
   // Only the account that started connecting (another may have signed in on this browser since).
-  if (!req.user || req.user.id !== saved.userId || req.user.consentRequired || req.user.verificationRequired) {
+  if (!req.user || !isFlowOwner(saved, req.user.id) || req.user.consentRequired || req.user.verificationRequired) {
     back('failed');
     return;
   }
