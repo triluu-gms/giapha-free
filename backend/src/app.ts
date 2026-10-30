@@ -26,8 +26,21 @@ import { treesRouter } from './routes/trees';
 
 const app = express();
 
-// Vercel and most hosts sit behind a proxy; needed for correct req.protocol / req.secure.
-app.set('trust proxy', true);
+/**
+ * Which proxies may tell us the client's address (X-Forwarded-For) and protocol. It
+ * matters for security: rate limits and the login lockout count per req.ip, so trusting
+ * a header the client can write would let anyone reset them with each request.
+ * - On Vercel (VERCEL=1) the platform sets X-Forwarded-For itself and drops the client's.
+ * - Elsewhere only a proxy on this machine is trusted unless TRUST_PROXY says otherwise:
+ *   a hop count ("1"), "true"/"false", or addresses/subnets ("10.0.0.0/8, 127.0.0.1").
+ */
+function trustProxy(): boolean | number | string {
+  const value = config.trustProxy.trim();
+  if (!value) return process.env.VERCEL ? true : 'loopback';
+  if (value === 'true' || value === 'false') return value === 'true';
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+app.set('trust proxy', trustProxy());
 
 // No CORS: browsers call the API same-origin through the frontend's /api rewrite.
 // Imports carry up to 2000 people; the body is read here and the default parser skips it.
@@ -47,11 +60,9 @@ app.get('/api/health', async (_req, res) => {
     await getDriver().verifyConnectivity({ database: config.neo4j.database });
     res.json({ status: 'ok', database: 'connected' });
   } catch (err) {
-    res.status(503).json({
-      status: 'error',
-      database: 'unreachable',
-      error: err instanceof Error ? err.message : String(err),
-    });
+    // The driver's message can name the database host; it goes to the server log only.
+    console.error('Health check: database unreachable:', err);
+    res.status(503).json({ status: 'error', database: 'unreachable' });
   }
 });
 

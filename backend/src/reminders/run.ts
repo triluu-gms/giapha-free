@@ -33,7 +33,10 @@ const fullName = (p: Row['person'], locale: 'en' | 'vi') =>
  * Each reminder records the anniversary it was sent for, so running twice a day
  * sends nothing twice. Only people in trees the user still belongs to count.
  */
-export async function runReminders(now = new Date()): Promise<{ date: string; emails: number; failed: number }> {
+export async function runReminders(
+  now = new Date(),
+  budgetMs = SEND_BUDGET_MS,
+): Promise<{ date: string; emails: number; failed: number; postponed: number }> {
   const today = vietnamDate(now);
   const rows = await query<Row>(
     `MATCH (u:User)-[r:REMINDS]->(p:Person)
@@ -67,25 +70,44 @@ export async function runReminders(now = new Date()): Promise<{ date: string; em
     due.set(row.userId, entry);
   }
 
+  // A few emails at a time, and no new one once the time budget is spent, so the job
+  // finishes inside the platform's time limit however many reminders there are.
+  // What's left is reported (postponed) and logged.
   let emails = 0;
   let failed = 0;
-  for (const [userId, entry] of due) {
-    try {
-      await sendEmail(
-        anniversaryReminderEmail(entry.email, entry.locale, entry.items, entry.daysBefore, `${config.auth.publicAppUrl}/account`),
-      );
-      await query(
-        `MATCH (:User {id: $userId})-[r:REMINDS]->(p:Person)
-         WHERE p.id IN $personIds
-         SET r.lastSentFor = $date`,
-        { userId, personIds: entry.personIds, date: entry.date },
-        'WRITE',
-      );
-      emails++;
-    } catch (err) {
-      failed++;
-      console.error(`Could not send anniversary reminders to user ${userId}:`, err);
+  const queue = [...due];
+  const started = Date.now();
+  const worker = async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      if (Date.now() - started > budgetMs) {
+        queue.unshift(next);
+        return;
+      }
+      const [userId, entry] = next;
+      try {
+        await sendEmail(
+          anniversaryReminderEmail(entry.email, entry.locale, entry.items, entry.daysBefore, `${config.auth.publicAppUrl}/account`),
+        );
+        await query(
+          `MATCH (:User {id: $userId})-[r:REMINDS]->(p:Person)
+           WHERE p.id IN $personIds
+           SET r.lastSentFor = $date`,
+          { userId, personIds: entry.personIds, date: entry.date },
+          'WRITE',
+        );
+        emails++;
+      } catch (err) {
+        failed++;
+        console.error(`Could not send anniversary reminders to user ${userId}:`, err);
+      }
     }
-  }
-  return { date: today, emails, failed };
+  };
+  await Promise.all(Array.from({ length: Math.min(SEND_CONCURRENCY, queue.length) }, worker));
+  if (queue.length) console.error(`Reminders: time budget used up, ${queue.length} user(s) not emailed today`);
+  return { date: today, emails, failed, postponed: queue.length };
 }
+
+/** Emails sent at the same time. */
+const SEND_CONCURRENCY = 5;
+/** Stop starting new emails after this, well inside the serverless function's time limit. */
+const SEND_BUDGET_MS = 45_000;

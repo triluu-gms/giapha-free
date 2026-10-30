@@ -209,14 +209,17 @@ export const api = {
     request<void>(`/api/trees/${enc(treeId)}/access-requests/${enc(userId)}`, { method: 'DELETE' }),
 
   // ---- The /join page (anyone with the link) ----
-  joinPreview: (token: string) => request<JoinPreview>(`/api/join/preview${qs({ token })}`),
+  joinPreview: (token: string) =>
+    request<JoinPreview>('/api/join/preview', { method: 'POST', body: JSON.stringify({ token }) }),
   requestAccess: (token: string, message?: string) =>
     request<{ status: 'pending' | 'member'; treeId?: string }>('/api/join/request', {
       method: 'POST',
       body: JSON.stringify({ token, message: message || undefined }),
     }),
-  cancelAccessRequest: (token: string) => request<void>(`/api/join/request${qs({ token })}`, { method: 'DELETE' }),
-  previewInvitation: (token: string) => request<InvitationPreview>(`/api/invitations/preview${qs({ token })}`),
+  cancelAccessRequest: (token: string) =>
+    request<void>('/api/join/request', { method: 'DELETE', body: JSON.stringify({ token }) }),
+  previewInvitation: (token: string) =>
+    request<InvitationPreview>('/api/invitations/preview', { method: 'POST', body: JSON.stringify({ token }) }),
   myInvitations: () => request<Invitation[]>('/api/invitations/mine'),
   acceptInvitationToken: (token: string) =>
     request<{ treeId: string }>('/api/invitations/accept', { method: 'POST', body: JSON.stringify({ token }) }),

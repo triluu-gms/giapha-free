@@ -2,7 +2,7 @@ import type { Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { HttpError } from '../errors';
 import { findSessionUserWithTree, type TreeAccess } from '../trees/trees';
-import { clearSessionCookie, readCookie, SESSION_COOKIE } from './cookies';
+import { clearSessionCookie, readSessionToken, setSessionCookie } from './cookies';
 import { verifyAccessToken } from './tokens';
 import { findSessionUser, type AuthUser } from './users';
 
@@ -12,12 +12,12 @@ import { findSessionUser, type AuthUser } from './users';
  * loaded in the same database round trip and left for loadTree.
  */
 async function authenticate(req: Request, res: Response, treeId?: string): Promise<void> {
-  const token = readCookie(req, SESSION_COOKIE);
-  if (!token) throw new HttpError(401, 'Authentication required');
+  const cookie = readSessionToken(req);
+  if (!cookie) throw new HttpError(401, 'Authentication required');
 
   let session: { userId: string; issuedAt: number };
   try {
-    session = verifyAccessToken(token);
+    session = verifyAccessToken(cookie.token);
   } catch (err) {
     if (err instanceof jwt.JsonWebTokenError) {
       clearSessionCookie(req, res);
@@ -38,6 +38,8 @@ async function authenticate(req: Request, res: Response, treeId?: string): Promi
     clearSessionCookie(req, res);
     throw new HttpError(401, 'Your password was changed. Please sign in again.');
   }
+  // A session from before cookies were encrypted: keep it, but store it encrypted from now on.
+  if (cookie.legacy) setSessionCookie(req, res, cookie.token);
   req.user = found.user;
   if (treeId) req.prefetchedTree = { id: treeId, access: found.tree ?? null };
 }
@@ -51,9 +53,19 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
  * requireAuth for the /api/trees router: for /api/trees/:treeId/... it also loads
  * the caller's membership of that tree in the same query (used by loadTree).
  */
+/** The :treeId of /api/trees/:treeId/..., decoded; undefined if absent or malformed (loadTree then 404s). */
+function treeIdInPath(path: string): string | undefined {
+  const segment = path.split('/')[1];
+  if (!segment) return undefined;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined; // e.g. "%E0%A4": not valid UTF-8
+  }
+}
+
 export const requireAuthForTrees: RequestHandler = async (req, res, next) => {
-  const treeId = req.path.split('/')[1];
-  await authenticate(req, res, treeId ? decodeURIComponent(treeId) : undefined);
+  await authenticate(req, res, treeIdInPath(req.path));
   next();
 };
 

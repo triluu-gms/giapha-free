@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requestLocale } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
 import { HttpError } from '../errors';
+import { tokenSchema } from '../schemas';
 import {
   accessRequestSchema,
   accessStatus,
@@ -17,10 +18,11 @@ export const joinRouter = Router();
 
 const INVALID = () => new HttpError(404, 'This link is no longer valid. Ask for a new one.', 'accessLinkInvalid');
 
-// GET /api/join/preview?token= (public) -> { treeName, sharedBy, expired, status, treeId? }
+// POST /api/join/preview { token } (public) -> { treeName, sharedBy, expired, status, treeId? }
+// The token goes in the body, not the URL, so it stays out of server and proxy logs.
 // status is 'anonymous' when not signed in; treeId only for members (to open the tree).
-joinRouter.get('/preview', async (req, res) => {
-  const token = typeof req.query.token === 'string' ? req.query.token : '';
+joinRouter.post('/preview', async (req, res) => {
+  const { token } = tokenSchema.parse(req.body);
   const link = token ? await previewAccessLink(token) : null;
   if (!link) throw INVALID();
 
@@ -52,9 +54,9 @@ joinRouter.post('/request', async (req, res) => {
   res.status(status === 'pending' ? 201 : 200).json({ status, ...(status === 'member' ? { treeId } : {}) });
 });
 
-// DELETE /api/join/request?token= -> withdraws your pending request
+// DELETE /api/join/request { token } -> withdraws your pending request
 joinRouter.delete('/request', async (req, res) => {
-  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  const { token } = tokenSchema.parse(req.body);
   const link = token ? await previewAccessLink(token) : null;
   if (!link) throw INVALID();
   await cancelAccessRequest(link.treeId, req.user!.id);

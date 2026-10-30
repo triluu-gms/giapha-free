@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
 import { api } from '@/lib/api';
+import { useLinkToken } from '@/lib/useLinkToken';
 
 type State =
   | { kind: 'working' }
@@ -13,7 +13,7 @@ type State =
   | { kind: 'error'; message: string | null }; // null = the link has no token
 
 function Verify() {
-  const params = useSearchParams();
+  const linkToken = useLinkToken();
   const { status, refreshUser } = useAuth();
   const { t } = useI18n();
   const [state, setState] = useState<State>({ kind: 'working' });
@@ -23,7 +23,7 @@ function Verify() {
     // Strict mode runs effects twice in development; the token is single-use.
     if (started.current) return;
     started.current = true;
-    const token = params.get('token');
+    const token = linkToken;
     if (!token) {
       setState({ kind: 'error', message: null });
       return;
@@ -35,7 +35,7 @@ function Verify() {
         await refreshUser();
       })
       .catch((err: Error) => setState({ kind: 'error', message: err.message }));
-  }, [params, refreshUser]);
+  }, [linkToken, refreshUser]);
 
   return (
     <div className="login-card">

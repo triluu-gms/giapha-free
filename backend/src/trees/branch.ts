@@ -34,15 +34,26 @@ export class Branch {
     readonly scope: EditScope,
     /** Person id -> generations below the root, or null for someone who is in it only as a spouse. */
     readonly levels: Map<string, number | null>,
+    /**
+     * Spouses who also belong elsewhere in the tree: they have parents, children or
+     * other spouses outside the branch. They can be linked to, but not edited or
+     * deleted: deleting one would cut their family elsewhere off from them.
+     */
+    readonly readOnly: Set<string> = new Set(),
   ) {}
 
   includes(id: string): boolean {
     return this.levels.has(id);
   }
 
+  /** People of the branch, except spouses who also belong to the rest of the tree. */
+  canEdit(id: string): boolean {
+    return this.includes(id) && !this.readOnly.has(id);
+  }
+
   /** The root can be edited but not deleted, or the branch would be gone. */
   canDelete(id: string): boolean {
-    return this.includes(id) && id !== this.scope.rootId;
+    return this.canEdit(id) && id !== this.scope.rootId;
   }
 
   /** A new child must still be within the branch's depth. */
@@ -76,7 +87,22 @@ export async function loadBranch(treeId: string, scope: EditScope, run: Run = qu
   for (const row of rows) {
     for (const spouse of row.spouses) if (!levels.has(spouse)) levels.set(spouse, null);
   }
-  return new Branch(scope, levels);
+
+  // Spouses with relatives outside the branch belong to another part of the family too.
+  const spousesOnly = [...levels].filter(([, level]) => level === null).map(([id]) => id);
+  const readOnly = new Set<string>();
+  if (spousesOnly.length) {
+    const ties = await run<{ id: string; relatives: string[] }>(
+      `UNWIND $ids AS id
+       MATCH (s:Person {id: id, treeId: $treeId})
+       RETURN id, COLLECT { MATCH (s)-[:PARENT_OF|SPOUSE_OF]-(o:Person {treeId: $treeId}) RETURN o.id } AS relatives`,
+      { ids: spousesOnly, treeId },
+    );
+    for (const { id, relatives } of ties) {
+      if (relatives.some((other) => !levels.has(other))) readOnly.add(id);
+    }
+  }
+  return new Branch(scope, levels, readOnly);
 }
 
 /** The caller's branch in the current tree (routes behind loadTree), or null when their editing isn't limited. */

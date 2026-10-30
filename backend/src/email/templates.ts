@@ -80,6 +80,26 @@ export function emailChangeNoticeEmail(to: string, name: string | null, newEmail
   };
 }
 
+/**
+ * To an address that already has an account, when someone asked to move another
+ * account to it. Nothing changed; the person asking isn't told the address is in use.
+ */
+export function emailInUseNoticeEmail(to: string, signInUrl: string): EmailMessage {
+  const body =
+    'Someone asked to change the email of a Family Tree account to this address. This address already belongs to an account, so nothing was changed.';
+  return {
+    to,
+    subject: 'Someone tried to use your email on Family Tree',
+    html: layout(
+      'Nothing was changed',
+      [body, 'If this was you, you already have an account with this address: sign in with it instead. Otherwise you can ignore this email.'],
+      { label: 'Sign in', url: signInUrl },
+      'You get this email because this address has a Family Tree account.',
+    ),
+    text: `${body}\n\nIf this was you, sign in with this address instead:\n${signInUrl}\n\nOtherwise you can ignore this email.`,
+  };
+}
+
 export interface AnniversaryItem {
   personName: string;
   treeName: string;

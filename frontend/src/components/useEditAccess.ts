@@ -44,9 +44,13 @@ export function useEditAccess(version: unknown = 0): EditAccess {
   const { tree, treeApi, canEdit, branchOnly } = useCurrentTree();
   // Reload when the branch itself changes (picked up by refreshTrees).
   const scopeKey = tree.editScope ? `${tree.editScope.rootId}:${tree.editScope.depth}` : null;
-  const [branch, setBranch] = useState<{ rootId: string; depth: number; levels: Map<string, number | null> } | null>(
-    null,
-  );
+  const [branch, setBranch] = useState<{
+    rootId: string;
+    depth: number;
+    levels: Map<string, number | null>;
+    /** Spouses who also belong elsewhere in the tree: linkable, not editable. */
+    readOnly: Set<string>;
+  } | null>(null);
 
   useEffect(() => {
     if (!branchOnly) return;
@@ -59,6 +63,7 @@ export function useEditAccess(version: unknown = 0): EditAccess {
           rootId: info.scope.rootId,
           depth: info.scope.depth,
           levels: new Map(info.people.map((p) => [p.id, p.level])),
+          readOnly: new Set(info.people.filter((p) => p.readOnly).map((p) => p.id)),
         });
       })
       .catch(() => !cancelled && setBranch(null));
@@ -71,11 +76,12 @@ export function useEditAccess(version: unknown = 0): EditAccess {
     if (!canEdit) return NONE;
     if (!branchOnly) return FULL;
     if (!branch) return NONE; // still loading
-    const { rootId, depth, levels } = branch;
+    const { rootId, depth, levels, readOnly } = branch;
     const level = (id: string) => levels.get(id);
+    const editable = (id: string) => levels.has(id) && !readOnly.has(id);
     return {
-      canEditPerson: (id) => levels.has(id),
-      canDeletePerson: (id) => levels.has(id) && id !== rootId,
+      canEditPerson: editable,
+      canDeletePerson: (id) => editable(id) && id !== rootId,
       canAddChild: (id) => {
         const l = level(id);
         return typeof l === 'number' && l < depth;

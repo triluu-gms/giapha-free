@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, AUTH_EXPIRED_EVENT } from '@/lib/api';
-import { rememberTree } from '@/lib/currentTree';
+import { forgetRememberedTree, rememberTree } from '@/lib/currentTree';
+import { clearGraphCache } from '@/lib/graphCache';
 import type { User } from '@/lib/types';
 
 type Status = 'loading' | 'authenticated' | 'anonymous';
@@ -88,6 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } finally {
+      forgetRememberedTree();
+      clearGraphCache();
       setUser(null);
       setStatus('anonymous');
       router.push('/login');

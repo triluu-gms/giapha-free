@@ -46,6 +46,11 @@ export interface OAuthState {
   /** Same-site path to return to after login. */
   next: string;
   codeVerifier?: string;
+  /**
+   * Connecting Drive or the Gmail sender: the account that started it. The callback
+   * links the connection only to that account, not to whoever is signed in by then.
+   */
+  userId?: string;
 }
 
 const STATE_TTL_MS = 10 * 60 * 1000;

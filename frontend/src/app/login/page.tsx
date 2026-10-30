@@ -8,17 +8,21 @@ import ProviderIcon from '@/components/ProviderIcon';
 import { useI18n } from '@/components/I18nProvider';
 import { api } from '@/lib/api';
 import { PRIVACY_VERSION } from '@/lib/privacyAgreement';
+import { safeNextPath } from '@/lib/safeNext';
 import type { AuthProviderInfo } from '@/lib/types';
 
 type Mode = 'signin' | 'register';
+
+/** Error codes the Google/GitHub sign-in callback sends back (backend routes/auth.ts). */
+const SIGN_IN_ERRORS = ['oauthExpired', 'oauthCancelled', 'oauthFailed'] as const;
+type SignInError = (typeof SIGN_IN_ERRORS)[number];
 
 function LoginForm() {
   const { status, loginWithProvider, loginWithPassword, register } = useAuth();
   const { t, tx } = useI18n();
   const router = useRouter();
   const params = useSearchParams();
-  const rawNext = params.get('next') ?? '/';
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/';
+  const next = safeNextPath(params.get('next'));
 
   // Arriving from an invitation: the email is prefilled and registering with it
   // joins the tree straight away (no separate verification needed).
@@ -30,7 +34,12 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(params.get('error'));
+  // Google/GitHub sign-in comes back with a code; only these known messages are shown,
+  // so a crafted link can't put its own text on the page.
+  const [error, setError] = useState<string | null>(() => {
+    const code = params.get('error');
+    return code ? t(SIGN_IN_ERRORS.includes(code as SignInError) ? `login.error.${code as SignInError}` : 'login.error.oauthFailed') : null;
+  });
   const [providers, setProviders] = useState<AuthProviderInfo[]>([]);
   // The provider being redirected to; social login leaves the page, so the buttons lock meanwhile.
   const [redirecting, setRedirecting] = useState<string | null>(null);

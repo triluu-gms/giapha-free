@@ -240,7 +240,7 @@ Chi tiết:
 
 Cả hai đều ở **Tài khoản của tôi** (`/account`), và tài khoản có mật khẩu phải nhập lại mật khẩu để xác nhận (nhập sai được tính chung vào giới hạn với đăng nhập).
 
-- **Đổi email:** `POST /api/auth/email { email, password? }` lưu địa chỉ mới ở trạng thái *chờ xác nhận* và gửi email liên kết tới địa chỉ đó: `<PUBLIC_APP_URL>/confirm-email?token=…`, có hạn 24 giờ. Địa chỉ cũ nhận một email thông báo, để phiên đăng nhập bị đánh cắp không thể lặng lẽ chuyển hướng tài khoản. Bấm vào liên kết (`POST /api/auth/email/confirm { token }`, không cần phiên đăng nhập) biến nó thành email đã xác minh của tài khoản. Trước đó, email cũ vẫn dùng được và `GET /api/auth/me` có `pendingEmail`. `DELETE /api/auth/email` hủy việc đổi. Địa chỉ đã được tài khoản khác dùng bị từ chối (`409`, `emailTaken`), và mỗi phút chỉ yêu cầu được một liên kết mới. Cây gia phả, quyền thành viên, nhắc ngày giỗ và đăng nhập Google/GitHub gắn với tài khoản chứ không gắn với địa chỉ email, nên đều đi theo.
+- **Đổi email:** `POST /api/auth/email { email, password? }` lưu địa chỉ mới ở trạng thái *chờ xác nhận* và gửi email liên kết tới địa chỉ đó: `<PUBLIC_APP_URL>/confirm-email?token=…`, có hạn 24 giờ. Địa chỉ cũ nhận một email thông báo, để phiên đăng nhập bị đánh cắp không thể lặng lẽ chuyển hướng tài khoản. Bấm vào liên kết (`POST /api/auth/email/confirm { token }`, không cần phiên đăng nhập) biến nó thành email đã xác minh của tài khoản. Trước đó, email cũ vẫn dùng được và `GET /api/auth/me` có `pendingEmail`. `DELETE /api/auth/email` hủy việc đổi. Nếu địa chỉ đã thuộc tài khoản khác, câu trả lời vẫn như bình thường nhưng địa chỉ đó nhận một email thông báo thay vì liên kết, để form không bị dùng để dò xem ai có tài khoản. Mỗi phút chỉ yêu cầu được một liên kết mới. Đổi hoặc đặt lại mật khẩu sẽ hủy yêu cầu đổi email đang chờ, và xác nhận địa chỉ mới sẽ hủy liên kết đặt lại mật khẩu đã gửi tới địa chỉ cũ. Cây gia phả, quyền thành viên, nhắc ngày giỗ và đăng nhập Google/GitHub gắn với tài khoản chứ không gắn với địa chỉ email, nên đều đi theo.
 - **Xóa tài khoản:** `POST /api/auth/delete-account` với `{ password }`, hoặc `{ confirm: "<email của tài khoản>" }` với tài khoản chỉ dùng Google/GitHub. Thao tác này xóa tài khoản, các liên kết đăng nhập của nó và mọi cây nó làm chủ (người, ảnh, lời mời), gỡ nó khỏi các cây khác và xóa các lời nhắc của nó, rồi đăng xuất. Trang liệt kê những cây làm chủ mà người khác đang dùng, và gợi ý chuyển giao chúng bằng **Chuyển quyền sở hữu** trước.
 
 ### Thỏa thuận dữ liệu cá nhân (Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15)
@@ -364,8 +364,8 @@ Công khai (không cần phiên đăng nhập):
 | POST | `/api/auth/forgot-password` | `{ email }`. Gửi email liên kết đặt lại mật khẩu nếu tài khoản tồn tại |
 | POST | `/api/auth/reset-password` | `{ token, password }`. Đặt mật khẩu mới, đăng xuất các phiên khác, và đăng nhập |
 | POST | `/api/auth/logout` | Xóa cookie phiên |
-| GET | `/api/invitations/preview?token=` | Người mời, cây, email và vai trò cho trang đích của lời mời |
-| GET | `/api/join/preview?token=` | Cho trang xin quyền truy cập: `{ treeName, sharedBy, expired, status }`, với `status` là `anonymous`, `none`, `pending` hoặc `member` (thành viên nhận thêm `treeId`) |
+| POST | `/api/invitations/preview` `{ token }` | Người mời, cây, email và vai trò cho trang đích của lời mời |
+| POST | `/api/join/preview` `{ token }` | Cho trang xin quyền truy cập: `{ treeName, sharedBy, expired, status }`, với `status` là `anonymous`, `none`, `pending` hoặc `member` (thành viên nhận thêm `treeId`) |
 
 Đã đăng nhập:
 
@@ -384,7 +384,7 @@ Công khai (không cần phiên đăng nhập):
 | GET | `/api/drive/connect?next=` | đã xác minh | Bắt đầu kết nối Google Drive (chuyển trang). Google quay về callback đăng nhập `/api/auth/google/callback`, rồi về `next` kèm `?drive=connected` (hoặc `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Chấp nhận từ liên kết trong email (cũng xác minh email chưa xác minh nếu trùng) |
 | GET | `/api/invitations/mine` | đã xác minh | Các lời mời đang chờ gửi tới email của tôi |
-| POST / DELETE | `/api/join/request` | đã xác minh | POST `{ token, message? }`: xin quyền truy cập qua liên kết của cây (`{ status: "pending" }`, hoặc `"member"` kèm `treeId`). DELETE `?token=` rút lại yêu cầu. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
+| POST / DELETE | `/api/join/request` | đã xác minh | POST `{ token, message? }`: xin quyền truy cập qua liên kết của cây (`{ status: "pending" }`, hoặc `"member"` kèm `treeId`). DELETE `{ token }` rút lại yêu cầu. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
 | POST | `/api/invitations/:id/accept` / `decline` | đã xác minh | Trả lời từ dải thông báo trong ứng dụng |
 | GET | `/api/trees` | đã xác minh | Các cây của tôi: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount, accessRequestCount }` (`accessRequestCount` bằng 0 trừ khi bạn là chủ sở hữu hoặc quản trị viên) |
 | POST | `/api/trees` | đã xác minh | `{ name }`. Tạo một cây mới, trống do bạn làm chủ và trả về tóm tắt của nó. `409` (`code: "treeLimit"`) khi bạn đã làm chủ 20 cây |
@@ -614,10 +614,15 @@ Cũng có thể triển khai bằng CLI: `npm i -g vercel`, rồi chạy `vercel
 
 ## Ghi chú bảo mật
 
-- Token phiên chỉ nằm trong cookie HttpOnly. Script trên trang không đọc được nó, và nó không bao giờ xuất hiện trong URL hay `localStorage`.
+- Token phiên chỉ nằm trong cookie HttpOnly. Script trên trang không đọc được nó, và nó không bao giờ xuất hiện trong URL hay `localStorage`. Cookie lưu token ở dạng mã hóa (AES-256-GCM, khóa suy ra từ `JWT_SECRET`), cookie trạng thái OAuth cũng vậy, nên không đọc được gì từ kho cookie của trình duyệt. Cookie phiên có từ trước thay đổi này vẫn được chấp nhận một lần rồi được ghi lại ở dạng mã hóa.
 - Backend vẫn truy cập được qua URL `*.vercel.app` riêng của nó, nhưng cookie phiên thuộc tên miền của frontend và không bao giờ được gửi tới đó.
 - Đổi `JWT_SECRET` sẽ đăng xuất mọi người ngay lập tức.
-- Số yêu cầu được giới hạn theo IP của người dùng bằng [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 yêu cầu mỗi phút cho toàn bộ API, 120 mỗi phút cho `/api/auth`, và 30 mỗi 15 phút cho đăng nhập, đăng ký, mật khẩu, email, xóa tài khoản và đăng nhập Google/GitHub. Vượt giới hạn, API trả `429` với `code: "rateLimited"`. Bộ đếm nằm trong bộ nhớ, nên trên máy chủ serverless mỗi instance đang chạy đếm riêng.
+- Số yêu cầu được giới hạn theo IP của người dùng bằng [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 yêu cầu mỗi phút cho toàn bộ API, 120 mỗi phút cho `/api/auth`, và 30 mỗi 15 phút cho đăng nhập, đăng ký, mật khẩu, email, xóa tài khoản và đăng nhập Google/GitHub. Vượt giới hạn, API trả `429` với `code: "rateLimited"`. Bộ đếm nằm trong bộ nhớ, nên trên máy chủ serverless mỗi instance đang chạy đếm riêng. Đăng nhập sai mật khẩu còn được đếm theo email (30 lần mỗi 15 phút), bất kể từ địa chỉ IP nào.
+- IP của người dùng chỉ được lấy từ `X-Forwarded-For` khi proxy đáng tin đặt header đó: trên Vercel (`VERCEL=1`) là của nền tảng, nơi khác chỉ proxy trên cùng máy, trừ khi đặt `TRUST_PROXY` (số tầng proxy, `true`/`false`, hoặc danh sách địa chỉ). Tin vào header mà người dùng tự viết được sẽ cho phép ai cũng đặt lại được giới hạn.
+- Trang web gửi các header bảo mật trên mọi trang ([`frontend/next.config.ts`](frontend/next.config.ts)): Content Security Policy (script, dữ liệu và khung chỉ từ chính trang; `frame-ancestors 'none'` chống clickjacking), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` (token trong liên kết không lọt ra qua Referer), `nosniff`, Permissions-Policy và HSTS.
+- Ảnh tải lên được xóa metadata (EXIF có vị trí GPS, XMP, IPTC, chữ) trước khi lưu ([`trees/imageMetadata.ts`](backend/src/trees/imageMetadata.ts)). Đường dẫn ảnh phải là `https://`.
+- Token trong liên kết đặt lại mật khẩu, xác minh, đổi email và lời mời được xóa khỏi thanh địa chỉ sau khi đọc, và các yêu cầu xem trước gửi token trong body thay vì URL.
+- Khi đăng nhập Google/GitHub tiếp quản một tài khoản đã được đăng ký bằng email đó nhưng chưa từng xác minh, mọi phiên đăng nhập cũ của tài khoản đó bị kết thúc, và yêu cầu đổi email cùng liên kết đặt lại mật khẩu đang chờ bị hủy.
 - Đăng xuất xóa cookie trong trình duyệt đó. Đổi hoặc đặt lại mật khẩu đăng xuất tài khoản ở mọi nơi khác. Muốn cắt quyền của ai đó với cây của bạn, gỡ họ ở trang **Chia sẻ**.
 - Neo4j driver là một singleton được các lần gọi serverless đang chạy dùng lại.
 - `npm run build && npm start` trong `backend/` chạy API như một máy chủ Node bình thường, ví dụ trên Render, Railway hoặc Fly.io.

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { HttpError } from '../errors';
 import { query } from '../db';
 import { getStorage } from '../storage';
 
@@ -125,5 +126,15 @@ export async function releasePhotos(treeId: string, urls: unknown[]): Promise<vo
     await removeStoredFiles(rows.map((r) => r.ref));
   } catch (err) {
     console.error('Could not release photos:', err);
+  }
+}
+
+/**
+ * A photo path in a person's details must be one of this tree's own uploads. A path
+ * to another tree's photo would only show to members of both trees, so it's refused.
+ */
+export function assertPhotoInTree(treeId: string, url: unknown): void {
+  if (typeof url === 'string' && url.startsWith('/api/') && !ownPhotoId(treeId, url)) {
+    throw new HttpError(400, 'Use a photo uploaded to this tree, or an https:// link', 'photoOtherTree');
   }
 }

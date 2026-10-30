@@ -104,6 +104,9 @@ const en = {
   'login.createAccount': 'Create an account',
   'login.forgotPassword': 'Forgot password?',
   'login.agreePrivacy': 'I have read and agree to the {agreement}.',
+  'login.error.oauthExpired': 'Your sign-in took too long. Please try again.',
+  'login.error.oauthCancelled': 'Sign-in was cancelled.',
+  'login.error.oauthFailed': 'Couldn’t complete the sign-in. Please try again.',
 
   // ---- Personal data agreement (Luật 91/2025/QH15) ----
   'privacy.title': 'Personal data agreement',
@@ -609,6 +612,13 @@ const en = {
   'error.deleteConfirmMismatch': 'That doesn’t match. Type your email address exactly to confirm.',
   'error.consentRequired': 'Please read and accept the personal data agreement first.',
   'error.rateLimited': 'Too many requests from your network. Please wait a few minutes and try again.',
+  'error.emailUnavailable':
+    'This email can’t be used to create a new account. If it’s yours, sign in (with your password or Google/GitHub), or use “Forgot password?”.',
+  'error.backupRunning': 'A backup of this tree is already running. Try again in a moment.',
+  'error.mergeBranchRoot':
+    'An editor’s branch starts from this person. Ask the owner or an admin to merge them, or keep this record instead.',
+  'error.transferLimit': 'That member already owns 20 trees, the most one account can own.',
+  'error.photoOtherTree': 'Use a photo uploaded to this tree, or an https:// link.',
   'error.accessLinkInvalid': 'This link is no longer valid. Ask the person who shared it for a new one.',
   'error.accessLinkExpired': 'This link has expired. Ask the person who shared it for a new one.',
   'error.accessRequestLimit': 'You are already waiting on 10 trees. Wait for an answer, or withdraw a request first.',
@@ -821,6 +831,9 @@ const vi: Dictionary = {
   'login.createAccount': 'Tạo tài khoản',
   'login.forgotPassword': 'Quên mật khẩu?',
   'login.agreePrivacy': 'Tôi đã đọc và đồng ý với {agreement}.',
+  'login.error.oauthExpired': 'Đăng nhập quá lâu. Vui lòng thử lại.',
+  'login.error.oauthCancelled': 'Đã hủy đăng nhập.',
+  'login.error.oauthFailed': 'Không hoàn tất được đăng nhập. Vui lòng thử lại.',
 
   // ---- Thỏa thuận dữ liệu cá nhân (Luật 91/2025/QH15) ----
   'privacy.title': 'Thỏa thuận dữ liệu cá nhân',
@@ -1328,6 +1341,13 @@ const vi: Dictionary = {
   'error.deleteConfirmMismatch': 'Không khớp. Hãy gõ chính xác địa chỉ email của bạn để xác nhận.',
   'error.consentRequired': 'Vui lòng đọc và đồng ý Thỏa thuận dữ liệu cá nhân trước.',
   'error.rateLimited': 'Có quá nhiều yêu cầu từ mạng của bạn. Vui lòng đợi vài phút rồi thử lại.',
+  'error.emailUnavailable':
+    'Không thể dùng email này để tạo tài khoản mới. Nếu đây là email của bạn, hãy đăng nhập (bằng mật khẩu hoặc Google/GitHub), hoặc dùng “Quên mật khẩu?”.',
+  'error.backupRunning': 'Cây này đang được sao lưu. Vui lòng thử lại sau ít phút.',
+  'error.mergeBranchRoot':
+    'Nhánh của một người chỉnh sửa bắt đầu từ người này. Hãy nhờ chủ sở hữu hoặc quản trị viên gộp, hoặc giữ bản ghi này lại.',
+  'error.transferLimit': 'Thành viên này đã sở hữu 20 cây, mức tối đa cho một tài khoản.',
+  'error.photoOtherTree': 'Hãy dùng ảnh đã tải lên cây này, hoặc một đường dẫn https://.',
   'error.accessLinkInvalid': 'Liên kết này không còn hiệu lực. Hãy xin người đã chia sẻ một liên kết mới.',
   'error.accessLinkExpired': 'Liên kết này đã hết hạn. Hãy xin người đã chia sẻ một liên kết mới.',
   'error.accessRequestLimit': 'Bạn đang chờ duyệt ở 10 cây. Hãy chờ trả lời, hoặc rút bớt một yêu cầu.',

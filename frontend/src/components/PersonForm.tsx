@@ -206,7 +206,7 @@ export default function PersonForm({ person, onSaved, onCancel }: Props) {
           <div className="photo-row">
             {photoSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={photoSrc} alt="" className="avatar" />
+              <img src={photoSrc} alt="" className="avatar" referrerPolicy="no-referrer" />
             ) : (
               <span className="avatar empty" />
             )}

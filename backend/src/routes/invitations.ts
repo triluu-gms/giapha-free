@@ -15,9 +15,10 @@ export const invitationsRouter = Router();
 
 const NOT_VALID = 'This invitation is no longer valid. It may have been accepted, revoked or replaced by a newer one.';
 
-// GET /api/invitations/preview?token=... (public) -> what the invite landing page shows
-invitationsRouter.get('/preview', async (req, res) => {
-  const token = typeof req.query.token === 'string' ? req.query.token : '';
+// POST /api/invitations/preview { token } (public) -> what the invite landing page shows.
+// The token goes in the body, not the URL, so it stays out of server and proxy logs.
+invitationsRouter.post('/preview', async (req, res) => {
+  const { token } = tokenSchema.parse(req.body);
   const invitation = token ? await findInvitationByToken(token) : null;
   if (!invitation) throw new HttpError(404, NOT_VALID);
   const { email, role, treeName, inviterName, expired, expiresAt, editScope } = invitation;

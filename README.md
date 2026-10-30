@@ -240,7 +240,7 @@ Details:
 
 Both are on **My account** (`/account`), and accounts with a password confirm with it again (wrong tries count towards the same limit as sign-in).
 
-- **Change email:** `POST /api/auth/email { email, password? }` stores the address as *pending* and emails a link to it: `<PUBLIC_APP_URL>/confirm-email?token=…`, valid for 24 hours. The old address gets a notice, so a stolen session can't quietly redirect the account. Clicking the link (`POST /api/auth/email/confirm { token }`, no session needed) makes it the account's verified email. Until then, the old email keeps working and `GET /api/auth/me` shows `pendingEmail`. `DELETE /api/auth/email` cancels. An address used by another account is refused (`409`, `emailTaken`), and a new link can be requested once a minute. Trees, memberships, reminders and Google/GitHub sign-in are tied to the account, not the address, so they all follow.
+- **Change email:** `POST /api/auth/email { email, password? }` stores the address as *pending* and emails a link to it: `<PUBLIC_APP_URL>/confirm-email?token=…`, valid for 24 hours. The old address gets a notice, so a stolen session can't quietly redirect the account. Clicking the link (`POST /api/auth/email/confirm { token }`, no session needed) makes it the account's verified email. Until then, the old email keeps working and `GET /api/auth/me` shows `pendingEmail`. `DELETE /api/auth/email` cancels. If another account already uses the address, the answer looks the same, but that address gets a notice instead of a link, so the form can't be used to find out who has an account. A new link can be requested once a minute. Changing or resetting the password cancels a pending change, and confirming a new address cancels any reset link sent to the old one. Trees, memberships, reminders and Google/GitHub sign-in are tied to the account, not the address, so they all follow.
 - **Delete account:** `POST /api/auth/delete-account` with `{ password }`, or `{ confirm: "<the account's email>" }` for Google/GitHub-only accounts. It deletes the account, its sign-in links and every tree it owns (people, photos, invitations), removes its memberships of other trees and its reminders, and signs out. The page lists the owned trees that other people use, and suggests handing them over with **Make owner** first.
 
 ### Personal data agreement (Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15)
@@ -353,7 +353,7 @@ Public (no session):
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/health` | Checks the API and the AuraDB connection |
+| GET | `/api/health` | Checks the API and the AuraDB connection (`503` without details when the database is unreachable; the error goes to the server log) |
 | GET | `/api/features` | `{ photoUploads }`: whether photo storage is configured |
 | GET | `/api/auth/providers` | The login providers that are configured |
 | GET | `/api/auth/:provider/login?next=` | Starts social login or registration |
@@ -364,8 +364,8 @@ Public (no session):
 | POST | `/api/auth/forgot-password` | `{ email }`. Emails a password reset link if the account exists |
 | POST | `/api/auth/reset-password` | `{ token, password }`. Sets the new password, signs out other sessions, and signs in |
 | POST | `/api/auth/logout` | Clears the session cookie |
-| GET | `/api/invitations/preview?token=` | Inviter, tree, email and role for the invitation landing page |
-| GET | `/api/join/preview?token=` | For the request-access page: `{ treeName, sharedBy, expired, status }`, where `status` is `anonymous`, `none`, `pending` or `member` (members also get `treeId`) |
+| POST | `/api/invitations/preview` `{ token }` | Inviter, tree, email and role for the invitation landing page |
+| POST | `/api/join/preview` `{ token }` | For the request-access page: `{ treeName, sharedBy, expired, status }`, where `status` is `anonymous`, `none`, `pending` or `member` (members also get `treeId`) |
 
 Signed in:
 
@@ -384,7 +384,7 @@ Signed in:
 | GET | `/api/drive/connect?next=` | verified | Starts connecting Google Drive (a page navigation). Google returns to the sign-in callback `/api/auth/google/callback`, which goes back to `next` with `?drive=connected` (or `cancelled`, `noAccess`, `expired`, `failed`) |
 | POST | `/api/invitations/accept` | — | `{ token }`. Accept from the emailed link (also verifies a matching unverified email) |
 | GET | `/api/invitations/mine` | verified | Pending invitations for my email |
-| POST / DELETE | `/api/join/request` | verified | POST `{ token, message? }`: ask for access through a tree's link (`{ status: "pending" }`, or `"member"` with `treeId`). DELETE `?token=` withdraws it. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
+| POST / DELETE | `/api/join/request` | verified | POST `{ token, message? }`: ask for access through a tree's link (`{ status: "pending" }`, or `"member"` with `treeId`). DELETE `{ token }` withdraws it. `404` `accessLinkInvalid`, `410` `accessLinkExpired`, `429` `accessRequestLimit` / `accessRequestsFull` |
 | POST | `/api/invitations/:id/accept` / `decline` | verified | Respond from the in-app banner |
 | GET | `/api/trees` | verified | My trees: `{ id, name, role, settings, myPersonId, ownerName, personCount, memberCount, accessRequestCount }` (`accessRequestCount` is 0 unless you are the owner or an admin) |
 | POST | `/api/trees` | verified | `{ name }`. Creates a new, empty tree that you own and returns its summary. `409` (`code: "treeLimit"`) once you own 20 trees |
@@ -626,10 +626,15 @@ You can also deploy from the CLI: `npm i -g vercel`, then run `vercel` inside ea
 
 ## Security notes
 
-- The session token lives only in an HttpOnly cookie. Page scripts can't read it, and it never appears in a URL or in `localStorage`.
+- The session token lives only in an HttpOnly cookie. Page scripts can't read it, and it never appears in a URL or in `localStorage`. The cookie holds the token encrypted (AES-256-GCM, key derived from `JWT_SECRET`), as do the OAuth state cookies, so nothing in the browser's cookie store can be read. A session cookie from before this change is accepted once and rewritten encrypted.
 - The backend is still reachable at its own `*.vercel.app` URL, but the session cookie belongs to the frontend's domain and is never sent there.
 - Changing `JWT_SECRET` signs everyone out immediately.
-- Requests are rate-limited per client IP with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 a minute for the whole API, 120 a minute for `/api/auth`, and 30 per 15 minutes for sign-in, registration, password, email and account-deletion routes and the Google/GitHub sign-in. Over the limit, the API answers `429` with `code: "rateLimited"`. Counters are in memory, so on serverless hosts each warm instance counts on its own.
+- Requests are rate-limited per client IP with [`express-rate-limit`](https://github.com/express-rate-limit/express-rate-limit) ([`auth/rateLimit.ts`](backend/src/auth/rateLimit.ts)): 300 a minute for the whole API, 120 a minute for `/api/auth`, and 30 per 15 minutes for sign-in, registration, password, email and account-deletion routes and the Google/GitHub sign-in. Over the limit, the API answers `429` with `code: "rateLimited"`. Counters are in memory, so on serverless hosts each warm instance counts on its own. Failed password logins are also counted per email (30 per 15 minutes), whatever the address.
+- The client's IP comes from `X-Forwarded-For` only when a trusted proxy set it: on Vercel (`VERCEL=1`) the platform's, elsewhere only a proxy on the same machine unless `TRUST_PROXY` says otherwise (a hop count, `true`/`false`, or addresses). Trusting a header the client can write would let anyone reset the limits.
+- The site sends security headers on every page ([`frontend/next.config.ts`](frontend/next.config.ts)): a Content Security Policy (scripts, data and frames only from the site; `frame-ancestors 'none'` against clickjacking), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` (link tokens never leave in the Referer), `nosniff`, a Permissions-Policy and HSTS.
+- Uploaded photos have their metadata (EXIF with GPS position, XMP, IPTC, text) removed before they are stored ([`trees/imageMetadata.ts`](backend/src/trees/imageMetadata.ts)). Photo links must be `https://`.
+- Link tokens in reset, verification, email-change and invitation links are removed from the address bar once read, and preview requests send them in the body, not the URL.
+- When a Google/GitHub sign-in takes over an account that was registered with that email but never verified, every earlier session of it ends and its pending email change and reset link are cancelled.
 - Signing out clears the cookie in that browser. Changing or resetting the password signs the account out everywhere else. To cut someone off from your tree, remove them on **Share**.
 - The Neo4j driver is a singleton that warm serverless invocations reuse.
 - `npm run build && npm start` in `backend/` runs the API as a normal Node server, for example on Render, Railway or Fly.io.

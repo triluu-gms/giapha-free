@@ -20,19 +20,32 @@ export async function mergePeople(
   keepId: string,
   removeId: string,
   fields: Partial<Omit<Person, 'id'>>,
+  /** The caller is the tree's owner or an admin, who decide which branch an editor gets. */
+  canManage: boolean,
 ): Promise<Person> {
   if (keepId === removeId) throw new HttpError(400, 'Choose two different people');
 
   const result = await writeTransaction(async (run) => {
-    const [pair] = await run<{ related: boolean; keepPhoto: string | null; removePhoto: string | null }>(
+    const [pair] = await run<{ related: boolean; branchRoot: boolean; keepPhoto: string | null; removePhoto: string | null }>(
       `MATCH (keep:Person {id: $keepId, treeId: $treeId}), (gone:Person {id: $removeId, treeId: $treeId})
        RETURN EXISTS { (keep)-[:PARENT_OF|SPOUSE_OF]-(gone) } AS related,
+              EXISTS { (:User)-[:MEMBER_OF {scopeRootId: gone.id}]->(:Tree {id: $treeId}) }
+                OR EXISTS { (:Invitation {treeId: $treeId, scopeRootId: gone.id}) } AS branchRoot,
               keep.photoUrl AS keepPhoto, gone.photoUrl AS removePhoto`,
       { treeId, keepId, removeId },
     );
     if (!pair) throw new HttpError(404, 'Person not found');
     if (pair.related) {
       throw new HttpError(409, 'These two are each other’s parent, child or spouse, so they can’t be the same person', 'mergeRelated');
+    }
+    // Merging moves an editor's branch to the kept person, which can make it larger.
+    // Choosing branches is for the owner and admins, so only they may merge such a person away.
+    if (pair.branchRoot && !canManage) {
+      throw new HttpError(
+        403,
+        'An editor’s branch starts from this person. Ask the owner or an admin to merge them, or keep this record instead.',
+        'mergeBranchRoot',
+      );
     }
 
     const [row] = await run<{ person: Person }>(MERGE_CYPHER, { treeId, keepId, removeId, fields });

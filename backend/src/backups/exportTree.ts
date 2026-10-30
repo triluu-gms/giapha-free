@@ -80,9 +80,9 @@ const GENDERS: Record<Locale, Record<string, string>> = {
 
 function csvCell(value: string | null | undefined): string {
   const text = value ?? '';
-  // Formula-looking text is prefixed so spreadsheets don't run it (CSV injection).
-  // "- item" (a dash and a space, as in a list) isn't a formula and stays as it is.
-  const safe = /^(=|\+|@|-(?!\s)|\t|\r)/.test(text) ? `'${text}` : text;
+  // Formula-looking text is prefixed so spreadsheets don't run it (CSV injection),
+  // including after leading spaces and any leading "-" (Excel reads "- 1+1" as a formula).
+  const safe = /^[\s]*[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 

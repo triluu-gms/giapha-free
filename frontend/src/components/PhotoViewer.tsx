@@ -47,7 +47,7 @@ export default function PhotoViewer({ src, caption, onClose }: Props) {
     >
       <figure>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={caption} />
+        <img src={src} alt={caption} referrerPolicy="no-referrer" />
         <figcaption>{caption}</figcaption>
       </figure>
       <button type="button" className="btn icon-only photo-viewer-close" onClick={onClose} aria-label={t('photo.close')} autoFocus>

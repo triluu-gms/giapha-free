@@ -274,16 +274,29 @@ export async function removeMember(treeId: string, userId: string, manageable: M
  * The previous owner then owns no tree; ensurePersonalTree gives them a new, empty
  * private one the next time they load their trees.
  */
-export async function transferOwnership(treeId: string, ownerId: string, newOwnerId: string): Promise<boolean> {
-  const [row] = await query(
+/**
+ * Makes another member the owner (the previous owner becomes an admin). 'limit' when
+ * they already own MAX_OWNED_TREES trees, the same cap as creating one.
+ */
+export async function transferOwnership(
+  treeId: string,
+  ownerId: string,
+  newOwnerId: string,
+): Promise<'ok' | 'notMember' | 'limit'> {
+  const [row] = await query<{ transferred: boolean }>(
     `MATCH (:User {id: $ownerId})-[prev:MEMBER_OF {role: 'owner'}]->(t:Tree {id: $treeId}),
-           (:User {id: $newOwnerId})-[heir:MEMBER_OF]->(t)
+           (heirUser:User {id: $newOwnerId})-[heir:MEMBER_OF]->(t)
      WHERE $newOwnerId <> $ownerId
-     SET heir.role = 'owner', prev.role = 'admin'
-     REMOVE heir.scopeRootId, heir.scopeDepth
-     RETURN t.id AS treeId`,
-    { treeId, ownerId, newOwnerId },
+     WITH t, prev, heir, COUNT { (heirUser)-[:MEMBER_OF {role: 'owner'}]->(:Tree) } < $max AS allowed
+     CALL (t, prev, heir, allowed) {
+       WITH * WHERE allowed
+       SET heir.role = 'owner', prev.role = 'admin'
+       REMOVE heir.scopeRootId, heir.scopeDepth
+     }
+     RETURN allowed AS transferred`,
+    { treeId, ownerId, newOwnerId, max: MAX_OWNED_TREES },
     'WRITE',
   );
-  return Boolean(row);
+  if (!row) return 'notMember';
+  return row.transferred ? 'ok' : 'limit';
 }

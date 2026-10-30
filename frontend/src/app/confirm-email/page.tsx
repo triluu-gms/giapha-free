@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
 import { api } from '@/lib/api';
+import { useLinkToken } from '@/lib/useLinkToken';
 
 type State =
   | { kind: 'working' }
@@ -14,7 +14,7 @@ type State =
 
 /** Opened from the link emailed to a new address: makes it the account's email. */
 function Confirm() {
-  const params = useSearchParams();
+  const linkToken = useLinkToken();
   const { status, refreshUser } = useAuth();
   const { t, errorMessage } = useI18n();
   const [state, setState] = useState<State>({ kind: 'working' });
@@ -24,7 +24,7 @@ function Confirm() {
     // Strict mode runs effects twice in development; the token is single-use.
     if (started.current) return;
     started.current = true;
-    const token = params.get('token');
+    const token = linkToken;
     if (!token) {
       setState({ kind: 'error', message: null });
       return;
@@ -36,7 +36,7 @@ function Confirm() {
         await refreshUser();
       })
       .catch((err) => setState({ kind: 'error', message: errorMessage(err) }));
-  }, [params, refreshUser, errorMessage]);
+  }, [linkToken, refreshUser, errorMessage]);
 
   return (
     <div className="login-card">

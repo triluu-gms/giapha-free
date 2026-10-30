@@ -46,6 +46,14 @@ export const USER_FIELDS =`.id, .email, .name, .avatarUrl, .createdAt, .lastLogi
   .privacyVersion, .privacyAcceptedAt,
   consentRequired: coalesce(u.privacyVersion, '') <> '${PRIVACY_VERSION}'`;
 
+/** Registering with an address that already has an account (of any kind). */
+const emailUnavailable = () =>
+  new HttpError(
+    409,
+    'This email can’t be used to create a new account. If it’s yours, sign in (with your password or Google/GitHub), or use “Forgot password?”.',
+    'emailUnavailable',
+  );
+
 // Every account gets a private tree it owns.
 const CREATE_PERSONAL_TREE = `
   CREATE (u)-[:MEMBER_OF {role: 'owner', since: $now}]->(:Tree {id: randomUUID(), name: $treeName, createdAt: $now})`;
@@ -122,18 +130,10 @@ export async function createPasswordUser(input: {
       existing.accounts === 0;
     if (abandoned) {
       await deleteUser(existing.id);
-    } else if (!existing.verified) {
-      throw new HttpError(
-        409,
-        'An account with this email is waiting for email verification. Sign in to resend the link, or try again in 24 hours if that account isn’t yours.',
-      );
     } else {
-      throw new HttpError(
-        409,
-        existing.hasPassword
-          ? 'An account with this email already exists. Please sign in instead.'
-          : 'This email is already registered through Google or GitHub. Please sign in with that instead.',
-      );
+      // One answer whatever the account is like (password, Google/GitHub, not yet
+      // verified), so registering doesn't tell a stranger how an address is used.
+      throw emailUnavailable();
     }
   }
 
@@ -153,7 +153,7 @@ export async function createPasswordUser(input: {
   } catch (err) {
     // Lost a race with another registration for the same email.
     if ((err as { code?: string }).code === 'Neo.ClientError.Schema.ConstraintValidationFailed') {
-      throw new HttpError(409, 'An account with this email already exists. Please sign in instead.');
+      throw emailUnavailable();
     }
     throw err;
   }
@@ -282,7 +282,8 @@ export async function resetPasswordWithToken(token: string, passwordHash: string
          u.lastLoginAt = $now,
          u.emailVerified = true
      REMOVE u.resetTokenHash, u.resetTokenExpiresAt, u.resetSentAt,
-            u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt
+            u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt,
+            u.pendingEmail, u.pendingEmailTokenHash, u.pendingEmailExpiresAt
      RETURN u {${USER_FIELDS}} AS user`,
     {
       hash: hashLinkToken(token),
@@ -295,12 +296,17 @@ export async function resetPasswordWithToken(token: string, passwordHash: string
   return row?.user ?? null;
 }
 
-/** Replaces the password of a signed-in user (the caller checks the current one). */
+/**
+ * Replaces the password of a signed-in user (the caller checks the current one).
+ * Like a reset, it also cancels a pending email change: someone who stole a session
+ * may have started one, and its link works without signing in.
+ */
 export async function changePassword(userId: string, passwordHash: string): Promise<AuthUser | null> {
   const [row] = await query<UserRow>(
     `MATCH (u:User {id: $id})
      SET u.passwordHash = $passwordHash, u.passwordChangedAt = $changedAt
-     REMOVE u.resetTokenHash, u.resetTokenExpiresAt, u.resetSentAt
+     REMOVE u.resetTokenHash, u.resetTokenExpiresAt, u.resetSentAt,
+            u.pendingEmail, u.pendingEmailTokenHash, u.pendingEmailExpiresAt
      RETURN u {${USER_FIELDS}} AS user`,
     { id: userId, passwordHash, changedAt: passwordChangeTime() },
     'WRITE',
@@ -323,12 +329,15 @@ export async function requestEmailChange(
   userId: string,
   newEmail: string,
   cooldownMs: number,
-): Promise<{ token: string; user: { email: string | null; name: string | null } }> {
+): Promise<{ token: string | null; user: { email: string | null; name: string | null } }> {
+  // When another account already uses the address, token is null: the caller emails
+  // that address a notice instead of a link. The pending change is recorded either way
+  // (with a token nobody receives, so it can never be confirmed) and the answer is the
+  // same, so the form can't be used to find out who has an account.
   const [taken] = await query('MATCH (u:User {email: $email}) WHERE u.id <> $userId RETURN 1 AS found', {
     email: newEmail,
     userId,
   });
-  if (taken) throw emailTaken();
   const { token, hash } = createLinkToken();
   const now = Date.now();
   const [row] = await query<{ email: string | null; name: string | null }>(
@@ -350,7 +359,7 @@ export async function requestEmailChange(
   if (!row) {
     throw new HttpError(429, 'A confirmation email was sent less than a minute ago. Please check that inbox.', 'emailChangeCooldown');
   }
-  return { token, user: row };
+  return { token: taken ? null : token, user: row };
 }
 
 /**
@@ -363,8 +372,10 @@ export async function confirmEmailChange(token: string): Promise<AuthUser | null
       `MATCH (u:User {pendingEmailTokenHash: $hash})
        WHERE u.pendingEmailExpiresAt > $now
        SET u.email = u.pendingEmail, u.emailVerified = true
+       // A reset link sent to the old address must not keep working once it isn't the account's.
        REMOVE u.pendingEmail, u.pendingEmailTokenHash, u.pendingEmailExpiresAt, u.emailChangeSentAt,
-              u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt
+              u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt,
+              u.resetTokenHash, u.resetTokenExpiresAt, u.resetSentAt
        RETURN u {${USER_FIELDS}} AS user`,
       { hash: hashLinkToken(token), now: new Date().toISOString() },
       'WRITE',
@@ -425,16 +436,28 @@ export async function upsertOAuthUser(provider: string, profile: OAuthProfile, l
   if (existing) return existing.user;
 
   if (email) {
+    // An account whose email was never verified may have been registered by someone
+    // else who typed this address. The provider proves who really owns it, so that
+    // account becomes theirs: its password goes, and so does everything its creator
+    // could still use. Sessions issued before now end (passwordChangedAt), and pending
+    // email changes and reset links are dropped.
     const [linked] = await query<UserRow>(
       `MATCH (u:User {email: $email})
        CREATE (u)-[:HAS_ACCOUNT]->(:Account {provider: $provider, providerAccountId: $providerAccountId, createdAt: $now})
-       SET u.passwordHash = CASE WHEN coalesce(u.emailVerified, true) THEN u.passwordHash ELSE null END,
+       WITH u, coalesce(u.emailVerified, true) AS wasVerified
+       SET u.passwordHash = CASE WHEN wasVerified THEN u.passwordHash ELSE null END,
+           u.passwordChangedAt = CASE WHEN wasVerified THEN u.passwordChangedAt ELSE $changedAt END,
+           u.pendingEmail = CASE WHEN wasVerified THEN u.pendingEmail ELSE null END,
+           u.pendingEmailTokenHash = CASE WHEN wasVerified THEN u.pendingEmailTokenHash ELSE null END,
+           u.pendingEmailExpiresAt = CASE WHEN wasVerified THEN u.pendingEmailExpiresAt ELSE null END,
+           u.resetTokenHash = CASE WHEN wasVerified THEN u.resetTokenHash ELSE null END,
+           u.resetTokenExpiresAt = CASE WHEN wasVerified THEN u.resetTokenExpiresAt ELSE null END,
            u.emailVerified = true,
            u.lastLoginAt = $now,
            u.avatarUrl = coalesce(u.avatarUrl, $avatarUrl)
        REMOVE u.verifyTokenHash, u.verifyTokenExpiresAt, u.verifySentAt
        RETURN u {${USER_FIELDS}} AS user`,
-      params,
+      { ...params, changedAt: passwordChangeTime() },
       'WRITE',
     );
     if (linked) return linked.user;

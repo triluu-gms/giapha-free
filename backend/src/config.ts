@@ -12,6 +12,8 @@ export const config = {
     database: process.env.NEO4J_DATABASE || undefined,
   },
   port: Number(process.env.PORT ?? 4000),
+  // Which proxies to trust for the client's IP (see trustProxy in app.ts). Empty: Vercel, or this machine only.
+  trustProxy: process.env.TRUST_PROXY ?? '',
   // Vercel Cron sends it as "Authorization: Bearer <CRON_SECRET>". Empty disables the keep-alive endpoint.
   cronSecret: process.env.CRON_SECRET ?? '',
   auth: {

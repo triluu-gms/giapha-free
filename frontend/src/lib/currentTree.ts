@@ -16,3 +16,12 @@ export function rememberTree(id: string) {
     // storage unavailable; the choice just won't be remembered
   }
 }
+
+/** On sign-out: the next account on this browser starts from its own tree. */
+export function forgetRememberedTree() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // storage unavailable; nothing was remembered
+  }
+}

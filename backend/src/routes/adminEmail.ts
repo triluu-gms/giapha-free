@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
-import { OAUTH_STATE_COOKIE } from '../auth/cookies';
+import { OAUTH_STATE_COOKIE, secureCookie } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
 import { sealOAuthState, type OAuthState } from '../auth/tokens';
 import type { AuthUser } from '../auth/users';
@@ -66,8 +66,8 @@ adminEmailRouter.get('/gmail/connect', (req, res) => {
   const codeVerifier = randomBytes(32).toString('base64url');
   res.cookie(
     OAUTH_STATE_COOKIE,
-    sealOAuthState({ provider: GMAIL_STATE_PROVIDER, state, next: BACK_PATH, codeVerifier }),
-    { httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
+    sealOAuthState({ provider: GMAIL_STATE_PROVIDER, state, next: BACK_PATH, codeVerifier, userId: req.user!.id }),
+    { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(gmailAuthorizationUrl(state, createHash('sha256').update(codeVerifier).digest('base64url')));
 });
@@ -95,7 +95,14 @@ export async function finishGmailConnect(req: Request, res: Response, saved: OAu
     res.redirect(`/login?next=${encodeURIComponent(BACK_PATH)}`);
     return;
   }
-  if (!gmailConfigured() || !req.user || req.user.consentRequired || req.user.verificationRequired || !isAdmin(req.user)) {
+  if (
+    !gmailConfigured() ||
+    !req.user ||
+    req.user.id !== saved.userId || // only the admin who started connecting
+    req.user.consentRequired ||
+    req.user.verificationRequired ||
+    !isAdmin(req.user)
+  ) {
     back('failed');
     return;
   }

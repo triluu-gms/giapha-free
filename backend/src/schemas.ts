@@ -10,7 +10,8 @@ const optionalText = (max: number) => z.string().trim().max(max).nullable().opti
 // A web link, or the path of a photo uploaded to the tree (see trees/photos.ts).
 const photoUrl = z.union(
   [
-    z.url({ protocol: /^https?$/ }).max(2000),
+    // https only: a plain-http image is readable and changeable on the way, and browsers block it on an https page.
+    z.url({ protocol: /^https$/ }).max(2000),
     z.string().regex(/^\/api\/trees\/[\w-]{1,100}\/photos\/[\w-]{1,100}$/),
   ],
   { error: 'Use an https:// link or an uploaded photo' },

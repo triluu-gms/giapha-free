@@ -48,9 +48,16 @@ const MAX_FAILURES = 10;
 
 const failures = new Map<string, { count: number; resetAt: number }>();
 
-export function assertLoginAllowed(key: string) {
+/**
+ * Per email, across all addresses: someone trying passwords from many IPs (or behind a
+ * proxy that lets them pick one) is still stopped. Higher than the per-IP limit, so a
+ * stranger can't easily lock the real owner out.
+ */
+export const MAX_FAILURES_PER_EMAIL = 30;
+
+export function assertLoginAllowed(key: string, max = MAX_FAILURES) {
   const entry = failures.get(key);
-  if (entry && entry.resetAt > Date.now() && entry.count >= MAX_FAILURES) {
+  if (entry && entry.resetAt > Date.now() && entry.count >= max) {
     throw new HttpError(429, 'Too many failed sign-in attempts. Please wait a few minutes and try again.');
   }
 }

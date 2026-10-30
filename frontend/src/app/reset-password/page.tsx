@@ -1,15 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, type FormEvent } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
 import { api } from '@/lib/api';
+import { useLinkToken } from '@/lib/useLinkToken';
 
 function ResetPasswordForm() {
-  const params = useSearchParams();
-  const token = params.get('token');
+  const token = useLinkToken();
   const { refreshUser } = useAuth();
   const { t } = useI18n();
   const [password, setPassword] = useState('');

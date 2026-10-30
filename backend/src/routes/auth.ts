@@ -1,6 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Router } from 'express';
-import { clearSessionCookie, OAUTH_STATE_COOKIE, readCookie, requestLocale, setSessionCookie } from '../auth/cookies';
+import {
+  clearSessionCookie,
+  OAUTH_STATE_COOKIE,
+  readCookie,
+  requestLocale,
+  secureCookie,
+  setSessionCookie,
+} from '../auth/cookies';
 import { requireAuth } from '../auth/middleware';
 import { getDummyHash, hashPassword, verifyPassword } from '../auth/passwords';
 import { PRIVACY_VERSION } from '../auth/privacy';
@@ -9,6 +16,7 @@ import {
   assertLoginAllowed,
   authRateLimit,
   clearLoginFailures,
+  MAX_FAILURES_PER_EMAIL,
   recordLoginFailure,
   sensitiveAuthRateLimit,
 } from '../auth/rateLimit';
@@ -36,7 +44,13 @@ import {
 } from '../auth/users';
 import { config } from '../config';
 import { sendEmail } from '../email/mailer';
-import { emailChangeEmail, emailChangeNoticeEmail, passwordResetEmail, verificationEmail } from '../email/templates';
+import {
+  emailChangeEmail,
+  emailChangeNoticeEmail,
+  emailInUseNoticeEmail,
+  passwordResetEmail,
+  verificationEmail,
+} from '../email/templates';
 import { HttpError, notFound } from '../errors';
 import {
   changePasswordSchema,
@@ -93,7 +107,7 @@ authRouter.get('/:provider/login', sensitiveAuthRateLimit, (req, res) => {
   res.cookie(
     OAUTH_STATE_COOKIE,
     sealOAuthState({ provider: provider.id, state, next: safeNextPath(req.query.next), codeVerifier }),
-    { httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
+    { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(provider.authorizationUrl({ state, redirectUri: callbackUrl(provider.id), codeChallenge }));
 });
@@ -105,7 +119,8 @@ authRouter.get('/:provider/callback', sensitiveAuthRateLimit, async (req, res) =
   const saved = raw ? openOAuthState(raw) : null;
   res.clearCookie(OAUTH_STATE_COOKIE, { path: STATE_COOKIE_PATH });
 
-  const fail = (message: string) => res.redirect(`/login?error=${encodeURIComponent(message)}`);
+  // A fixed code, not text: the login page shows only its own messages, so a crafted link can't put words on it.
+  const fail = (code: 'oauthExpired' | 'oauthCancelled' | 'oauthFailed') => res.redirect(`/login?error=${code}`);
 
   // Connecting Google Drive for backups comes back through this same Google callback.
   if (saved?.provider === DRIVE_STATE_PROVIDER && req.params.provider === 'google') {
@@ -118,16 +133,16 @@ authRouter.get('/:provider/callback', sensitiveAuthRateLimit, async (req, res) =
     return;
   }
   if (!saved || saved.provider !== req.params.provider) {
-    fail('Your login session expired. Please try again.');
+    fail('oauthExpired');
     return;
   }
   if (typeof req.query.error === 'string') {
-    fail(req.query.error === 'access_denied' ? 'Login was cancelled.' : `Login failed: ${req.query.error}`);
+    fail(req.query.error === 'access_denied' ? 'oauthCancelled' : 'oauthFailed');
     return;
   }
   const provider = getProvider(saved.provider);
   if (!provider || typeof req.query.code !== 'string' || req.query.state !== saved.state) {
-    fail('Invalid login response. Please try again.');
+    fail('oauthFailed');
     return;
   }
 
@@ -142,7 +157,7 @@ authRouter.get('/:provider/callback', sensitiveAuthRateLimit, async (req, res) =
     res.redirect(safeNextPath(saved.next));
   } catch (err) {
     console.error('OAuth callback failed:', err);
-    fail('Could not complete login. Please try again.');
+    fail('oauthFailed');
   }
 });
 
@@ -223,16 +238,20 @@ authRouter.post('/resend-verification', sensitiveAuthRateLimit, requireAuth, asy
 authRouter.post('/login', sensitiveAuthRateLimit, async (req, res) => {
   const { email, password } = passwordLoginSchema.parse(req.body);
   const limitKey = `${req.ip}|${email}`;
+  const emailKey = `email|${email}`;
   assertLoginAllowed(limitKey);
+  assertLoginAllowed(emailKey, MAX_FAILURES_PER_EMAIL);
 
   const credentials = await findPasswordCredentials(email);
   // Always run a hash comparison so unknown emails take as long as wrong passwords.
   const valid = await verifyPassword(password, credentials?.passwordHash ?? (await getDummyHash()));
   if (!credentials?.passwordHash || !valid) {
     recordLoginFailure(limitKey);
+    recordLoginFailure(emailKey);
     throw new HttpError(401, 'Invalid email or password');
   }
   clearLoginFailures(limitKey);
+  clearLoginFailures(emailKey);
 
   const user = await recordLogin(credentials.id);
   setSessionCookie(req, res, signAccessToken(user.id));
@@ -249,8 +268,8 @@ authRouter.post('/forgot-password', sensitiveAuthRateLimit, async (req, res) => 
     try {
       await sendEmail(passwordResetEmail(issued.user.email, issued.user.name, url));
     } catch (err) {
+      // Logged only: an error here would tell the caller this address has an account.
       console.error('Failed to send password reset email:', err);
-      throw new HttpError(502, 'The reset email could not be sent. Please try again later.');
     }
   }
   res.json({ sent: true });
@@ -319,13 +338,16 @@ authRouter.post('/email', sensitiveAuthRateLimit, requireAuth, async (req, res) 
   await assertCurrentPassword(user, password, 'email');
 
   const { token, user: current } = await requestEmailChange(user.id, email, RESEND_COOLDOWN_MS);
+  // Another account uses the address: its owner gets a notice instead of a link, and the
+  // answer below is the same as usual (see requestEmailChange).
+  const message = token
+    ? emailChangeEmail(email, current.name, `${config.auth.publicAppUrl}/confirm-email?token=${encodeURIComponent(token)}`)
+    : emailInUseNoticeEmail(email, `${config.auth.publicAppUrl}/login`);
   try {
-    await sendEmail(
-      emailChangeEmail(email, current.name, `${config.auth.publicAppUrl}/confirm-email?token=${encodeURIComponent(token)}`),
-    );
+    await sendEmail(message);
   } catch (err) {
     console.error('Failed to send email change confirmation:', err);
-    throw new HttpError(502, 'The confirmation email could not be sent. Please try again later.');
+    if (token) throw new HttpError(502, 'The confirmation email could not be sent. Please try again later.');
   }
   if (current.email) {
     await sendEmail(emailChangeNoticeEmail(current.email, current.name, email, `${config.auth.publicAppUrl}/account`)).catch(

@@ -145,7 +145,7 @@ export default function PersonPanel({ personId, version, onSelect, onFocus, onCh
             title={t('photo.view', { name: formatName(person) })}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={person.photoUrl} alt="" className="avatar" />
+            <img src={person.photoUrl} alt="" className="avatar" referrerPolicy="no-referrer" />
           </button>
         )}
         {viewingPhoto && person.photoUrl && (

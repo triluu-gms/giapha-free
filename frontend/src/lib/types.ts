@@ -244,8 +244,11 @@ export type BranchInfo =
   | { scope: null }
   | {
       scope: EditScope;
-      /** level: generations below the root; null for someone in the branch only as a spouse. */
-      people: { id: string; level: number | null }[];
+      /**
+       * level: generations below the root; null for someone in the branch only as a spouse.
+       * readOnly: a spouse who also belongs elsewhere in the tree (can be linked to, not edited or deleted).
+       */
+      people: { id: string; level: number | null; readOnly?: boolean }[];
     };
 
 export interface TreeSummary {

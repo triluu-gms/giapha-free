@@ -11,6 +11,8 @@ export const DEFAULT_DEPTH = 3;
 const MAX_ENTRIES = 12;
 const cache = new Map<string, TreeData>();
 const inflight = new Map<string, Promise<TreeData>>();
+/** Bumped on clear, so an answer to a request made before it is not stored afterwards. */
+let generation = 0;
 
 const keyOf = (treeId: string, rootId: string | null, depth: number) => `${treeId}|${rootId ?? '*'}|${rootId ? depth : ''}`;
 
@@ -24,21 +26,26 @@ export function fetchGraph(api: TreeApi, treeId: string, rootId: string | null, 
   const key = keyOf(treeId, rootId, depth);
   const pending = inflight.get(key);
   if (pending) return pending;
+  const startedIn = generation;
   const request = api
     .getGraph(rootId ?? undefined, depth)
     .then((data) => {
+      if (startedIn !== generation) return data; // asked for by the account before
       cache.delete(key); // re-insert, so the Map's order is least recently loaded first
       cache.set(key, data);
       while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value!);
       return data;
     })
-    .finally(() => inflight.delete(key));
+    .finally(() => {
+      if (inflight.get(key) === request) inflight.delete(key);
+    });
   inflight.set(key, request);
   return request;
 }
 
 /** Forgets every graph, e.g. when another account signs in on this tab. */
 export function clearGraphCache() {
+  generation++;
   cache.clear();
   inflight.clear();
 }

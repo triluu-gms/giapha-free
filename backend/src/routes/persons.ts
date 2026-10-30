@@ -6,7 +6,7 @@ import { HttpError, notFound } from '../errors';
 import { assertNotBranchEditor, branchOf, outsideBranch } from '../trees/branch';
 import { mergePeople } from '../trees/merge';
 import { personSummary } from '../trees/summary';
-import { releasePhotos } from '../trees/photos';
+import { assertPhotoInTree, releasePhotos } from '../trees/photos';
 import { isTooYoungToBeParent, PARENT_AGE_CODES, PARENT_TOO_YOUNG_MESSAGE } from '../trees/rules';
 import {
   personBulkDeleteSchema,
@@ -63,6 +63,7 @@ personsRouter.get('/:id', async (req, res) => {
 // keeps the new person inside it (a child or spouse of someone in the branch).
 personsRouter.post('/', async (req, res) => {
   const { link, ...input } = personCreateWithLinkSchema.parse(req.body);
+  assertPhotoInTree(currentTreeId(req), input.photoUrl);
   const treeId = currentTreeId(req);
 
   const branch = await branchOf(req);
@@ -147,9 +148,10 @@ async function checkParentAges(treeId: string, id: string, birthDate: string) {
 // The schema strips unknown keys, so treeId/id can't be overwritten.
 personsRouter.patch('/:id', async (req, res) => {
   const input = personUpdateSchema.parse(req.body);
+  assertPhotoInTree(currentTreeId(req), input.photoUrl);
   const treeId = currentTreeId(req);
   const branch = await branchOf(req);
-  if (branch && !branch.includes(String(req.params.id))) throw outsideBranch();
+  if (branch && !branch.canEdit(String(req.params.id))) throw outsideBranch();
   if (input.birthDate) await checkParentAges(treeId, String(req.params.id), input.birthDate);
   const [row] = await query<{ person: Person; oldPhotoUrl: string | null }>(
     `MATCH (p:Person {id: $id, treeId: $treeId})
@@ -170,7 +172,9 @@ personsRouter.patch('/:id', async (req, res) => {
 personsRouter.post('/merge', async (req, res) => {
   assertNotBranchEditor(req);
   const { keepId, removeId, fields = {} } = personMergeSchema.parse(req.body);
-  res.json(await mergePeople(currentTreeId(req), keepId, removeId, fields));
+  assertPhotoInTree(currentTreeId(req), fields.photoUrl);
+  const canManage = req.tree?.role === 'owner' || req.tree?.role === 'admin';
+  res.json(await mergePeople(currentTreeId(req), keepId, removeId, fields, canManage));
 });
 
 // POST /api/trees/:treeId/persons/delete { ids } -> { deleted }

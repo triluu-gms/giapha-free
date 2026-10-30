@@ -241,6 +241,12 @@ export async function acceptInvitation(invitation: Invitation, user: AuthUser): 
   const [row] = await query<{ treeId: string }>(
     `MATCH (i:Invitation {id: $id})
      MATCH (t:Tree {id: i.treeId}), (u:User {id: $userId})
+     // The person who sent it must still be allowed to give this access: an admin who
+     // was demoted or removed (or left) since can't let someone in after all.
+     WHERE EXISTS {
+       MATCH (:User {id: i.invitedBy})-[im:MEMBER_OF]->(t)
+       WHERE im.role = 'owner' OR (im.role = 'admin' AND i.role <> 'admin')
+     }
      MERGE (u)-[m:MEMBER_OF]->(t)
      ON CREATE SET m.since = $now
      WITH t, i, m, coalesce(m.role, '') AS oldRole, m.scopeRootId AS oldRoot, m.scopeDepth AS oldDepth

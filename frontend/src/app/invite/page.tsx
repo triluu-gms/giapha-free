@@ -1,20 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
 import { ConsentNotice } from '@/components/PrivacyAgreement';
 import { useTrees } from '@/components/TreeProvider';
 import { api } from '@/lib/api';
+import { useLinkToken } from '@/lib/useLinkToken';
 import { rememberTree } from '@/lib/currentTree';
 import type { InvitationPreview } from '@/lib/types';
 
 function InviteLanding() {
-  const params = useSearchParams();
   const router = useRouter();
-  const token = params.get('token') ?? '';
+  const token = useLinkToken() ?? '';
   const { user, status, logout, refreshUser } = useAuth();
   const { refreshTrees } = useTrees();
   const { t, tx, formatBranch } = useI18n();

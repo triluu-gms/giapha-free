@@ -203,7 +203,30 @@ const folderName = (locale: Locale, treeName: string) =>
  * the schedule owner's Drive. Older backups beyond `keep` are deleted. The owner
  * must still be the tree's owner or an admin.
  */
-export async function runBackup(treeId: string): Promise<BackupStatus> {
+export async function runBackup(treeId: string): Promise<BackupStatus | 'busy'> {
+  // One backup of a tree at a time, claimed atomically: several "Back up now" clicks
+  // (or a click during the daily job) would otherwise each export and upload the tree.
+  // A claim older than RUN_LOCK_MS is from a run that died and is taken over.
+  const [claim] = await query<{ claimed: boolean }>(
+    `MATCH (t:Tree {id: $treeId})
+     WHERE coalesce(t.backupRunningSince, '') < $stale
+     SET t.backupRunningSince = $now
+     RETURN true AS claimed`,
+    { treeId, now: new Date().toISOString(), stale: new Date(Date.now() - RUN_LOCK_MS).toISOString() },
+    'WRITE',
+  );
+  if (!claim) return 'busy';
+  try {
+    return await runClaimedBackup(treeId);
+  } finally {
+    await query('MATCH (t:Tree {id: $treeId}) REMOVE t.backupRunningSince', { treeId }, 'WRITE');
+  }
+}
+
+/** Longer than any run can take (a serverless function is stopped well before this). */
+const RUN_LOCK_MS = 10 * 60 * 1000;
+
+async function runClaimedBackup(treeId: string): Promise<BackupStatus> {
   const [ctx] = await query<RunContext>(
     `MATCH (t:Tree {id: $treeId})
      OPTIONAL MATCH (o:User {id: t.backupUserId})-[m:MEMBER_OF]->(t)
@@ -261,6 +284,7 @@ export async function runDueBackups(now = new Date(), budgetMs = 40_000): Promis
   for (const tree of due) {
     if (Date.now() - started > budgetMs) break;
     const status = await runBackup(tree.id);
+    if (status === 'busy') continue; // an admin's "Back up now" is running it right now
     ran++;
     if (status.lastStatus === 'error') failed++;
   }

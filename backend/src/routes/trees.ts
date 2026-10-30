@@ -29,6 +29,7 @@ import {
 } from '../trees/accessRequests';
 import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/branch';
 import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
+import { assertPhotoInTree } from '../trees/photos';
 import { addSampleFamily } from '../trees/sampleFamily';
 import { treeSettingsUpdateSchema, updateTreeSettings } from '../trees/settings';
 import {
@@ -130,7 +131,9 @@ treesRouter.post('/:treeId/backup/run', requireTreeManager, async (req, res) => 
   if (status.lastRunAt && Date.now() - Date.parse(status.lastRunAt) < BACKUP_COOLDOWN_MS) {
     throw new HttpError(429, 'A backup ran less than a minute ago', 'backupTooSoon');
   }
-  res.json(await runBackup(treeId));
+  const result = await runBackup(treeId);
+  if (result === 'busy') throw new HttpError(409, 'A backup of this tree is already running', 'backupRunning');
+  res.json(result);
 });
 
 // GET /api/trees/:treeId/export?format=csv|json -> the same files as a backup, downloaded
@@ -162,7 +165,7 @@ treesRouter.get('/:treeId/branch', async (req, res) => {
   }
   res.json({
     scope: req.tree!.editScope,
-    people: [...branch.levels].map(([id, level]) => ({ id, level })),
+    people: [...branch.levels].map(([id, level]) => ({ id, level, ...(branch.readOnly.has(id) && { readOnly: true }) })),
   });
 });
 
@@ -175,6 +178,8 @@ treesRouter.get('/:treeId/branch', async (req, res) => {
 treesRouter.post('/:treeId/import', requireTreeRole('editor'), async (req, res) => {
   assertNotBranchEditor(req);
   const { people, dryRun, matches } = importSchema.parse(req.body);
+  // Rows are checked one by one later; a photo path to another tree is refused up front.
+  for (const person of people) assertPhotoInTree(currentTreeId(req), (person as { photoUrl?: unknown } | null)?.photoUrl);
   const { issues, plan, candidates } = planImport(people, await loadExistingTree(currentTreeId(req)), matches);
   const summary = plan && {
     people: plan.people,
@@ -273,7 +278,11 @@ treesRouter.delete('/:treeId', requireTreeRole('owner'), async (req, res) => {
 treesRouter.post('/:treeId/transfer', requireTreeRole('owner'), async (req, res) => {
   const { userId } = transferOwnershipSchema.parse(req.body);
   if (userId === req.user!.id) throw new HttpError(400, 'You already own this tree');
-  if (!(await transferOwnership(currentTreeId(req), req.user!.id, userId))) throw notFound('Member');
+  const result = await transferOwnership(currentTreeId(req), req.user!.id, userId);
+  if (result === 'notMember') throw notFound('Member');
+  if (result === 'limit') {
+    throw new HttpError(409, `That member already owns ${MAX_OWNED_TREES} trees, the most one account can own`, 'transferLimit');
+  }
   res.json({ ownerId: userId, yourRole: 'admin' });
 });
 
