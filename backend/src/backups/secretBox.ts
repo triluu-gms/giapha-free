@@ -4,7 +4,7 @@ import { config } from '../config';
 // Secrets kept so they can be used or shown again later are stored encrypted
 // (AES-256-GCM): Google Drive refresh tokens, which let the server act on a
 // user's Drive, the Gmail sender's refresh token, "request access" link tokens, which
-// admins copy again, the OAuth state cookie (it carries the PKCE code verifier) and the
+// admins copy again, the OAuth state cookie and the
 // session cookie.
 // The key is derived from JWT_SECRET and the purpose: changing JWT_SECRET makes
 // them unreadable (admins then reconnect Drive, or make a new link).

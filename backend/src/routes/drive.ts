@@ -1,8 +1,8 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { OAUTH_STATE_COOKIE, secureCookie } from '../auth/cookies';
 import { requireAuth, requirePrivacyConsent, requireVerifiedEmail } from '../auth/middleware';
-import { sealOAuthState, type OAuthState } from '../auth/tokens';
+import { pkceChallenge, pkceVerifier, sealOAuthState, type OAuthState } from '../auth/tokens';
 import { getDriveConnection, removeDriveConnection, saveDriveConnection } from '../backups/backups';
 import { driveAuthorizationUrl, DriveAccessLost, driveConfigured, exchangeDriveCode } from '../backups/userDrive';
 import { HttpError } from '../errors';
@@ -42,19 +42,18 @@ driveRouter.get('/', async (req, res) => {
 driveRouter.get('/connect', (req, res) => {
   if (!driveConfigured()) throw new HttpError(503, 'Google Drive is not configured on this server');
   const state = randomBytes(16).toString('base64url');
-  const codeVerifier = randomBytes(32).toString('base64url');
   res.cookie(
     OAUTH_STATE_COOKIE,
     sealOAuthState({
       provider: DRIVE_STATE_PROVIDER,
       state,
       next: safeNextPath(req.query.next),
-      codeVerifier,
       userId: req.user!.id,
     }),
     { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
-  res.redirect(driveAuthorizationUrl(state, createHash('sha256').update(codeVerifier).digest('base64url')));
+  // PKCE: the verifier is derived from the state on the server, so the cookie doesn't carry it.
+  res.redirect(driveAuthorizationUrl(state, pkceChallenge(pkceVerifier(state))));
 });
 
 /**
@@ -70,7 +69,7 @@ export async function finishDriveConnect(req: Request, res: Response, saved: OAu
     back(req.query.error === 'access_denied' ? 'cancelled' : 'failed');
     return;
   }
-  if (!saved.codeVerifier || typeof req.query.code !== 'string' || req.query.state !== saved.state) {
+  if (typeof req.query.code !== 'string' || req.query.state !== saved.state) {
     back('failed');
     return;
   }
@@ -87,7 +86,7 @@ export async function finishDriveConnect(req: Request, res: Response, saved: OAu
     return;
   }
   try {
-    const { refreshToken, email } = await exchangeDriveCode(req.query.code, saved.codeVerifier);
+    const { refreshToken, email } = await exchangeDriveCode(req.query.code, pkceVerifier(saved.state));
     await saveDriveConnection(req.user.id, refreshToken, email);
     back('connected');
   } catch (err) {

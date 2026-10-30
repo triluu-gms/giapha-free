@@ -1,3 +1,4 @@
+import { createHash, createHmac, hkdfSync } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { open, seal } from '../backups/secretBox';
 import { config } from '../config';
@@ -45,7 +46,6 @@ export interface OAuthState {
   state: string;
   /** Same-site path to return to after login. */
   next: string;
-  codeVerifier?: string;
   /**
    * Connecting Drive or the Gmail sender: the account that started it. The callback
    * links the connection only to that account, not to whoever is signed in by then.
@@ -56,9 +56,25 @@ export interface OAuthState {
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 /**
- * The state cookie's value, encrypted (AES-256-GCM), not just signed: it carries the
- * PKCE code verifier, a secret that must not be readable from the browser's cookie
- * store. GCM also authenticates it, so a tampered or forged value doesn't open.
+ * The PKCE code verifier of an OAuth flow, derived from its random `state` with a
+ * server-only key (HMAC-SHA256), instead of being stored in the state cookie. The
+ * callback derives it again from the state; nobody without the server's key can, so it
+ * stays secret, and the browser never holds it at all. 43 characters of base64url: a
+ * valid verifier (RFC 7636 asks for 43-128).
+ */
+export function pkceVerifier(state: string): string {
+  const key = Buffer.from(hkdfSync('sha256', secret(), 'family-tree', 'pkce-verifier', 32));
+  return createHmac('sha256', key).update(state).digest('base64url');
+}
+
+/** The S256 code challenge sent to the provider for a verifier. */
+export const pkceChallenge = (verifier: string) => createHash('sha256').update(verifier).digest('base64url');
+
+/**
+ * The state cookie's value, encrypted (AES-256-GCM), not just signed, so nothing in it
+ * (the state, where to return, which account started a Drive/Gmail connection) can be
+ * read from the browser's cookie store. GCM also authenticates it, so a tampered or
+ * forged value doesn't open. The PKCE verifier isn't in it at all (see pkceVerifier).
  */
 export function sealOAuthState(data: OAuthState): string {
   return seal(JSON.stringify({ ...data, aud: STATE_AUDIENCE, exp: Date.now() + STATE_TTL_MS }), 'oauth-state');

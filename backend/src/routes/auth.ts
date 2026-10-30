@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import {
   clearSessionCookie,
@@ -20,7 +20,7 @@ import {
   recordLoginFailure,
   sensitiveAuthRateLimit,
 } from '../auth/rateLimit';
-import { signAccessToken, sealOAuthState, openOAuthState } from '../auth/tokens';
+import { openOAuthState, pkceChallenge, pkceVerifier, sealOAuthState, signAccessToken } from '../auth/tokens';
 import {
   acceptPrivacy,
   cancelEmailChange,
@@ -101,12 +101,12 @@ authRouter.get('/:provider/login', sensitiveAuthRateLimit, (req, res) => {
   if (!provider) throw notFound('Login provider');
 
   const state = randomBytes(16).toString('base64url');
-  const codeVerifier = provider.usesPkce ? randomBytes(32).toString('base64url') : undefined;
-  const codeChallenge = codeVerifier && createHash('sha256').update(codeVerifier).digest('base64url');
+  // PKCE: the verifier is derived from the state on the server, so the cookie doesn't carry it.
+  const codeChallenge = provider.usesPkce ? pkceChallenge(pkceVerifier(state)) : undefined;
 
   res.cookie(
     OAUTH_STATE_COOKIE,
-    sealOAuthState({ provider: provider.id, state, next: safeNextPath(req.query.next), codeVerifier }),
+    sealOAuthState({ provider: provider.id, state, next: safeNextPath(req.query.next) }),
     { httpOnly: true, secure: secureCookie(req), sameSite: 'lax', maxAge: 10 * 60 * 1000, path: STATE_COOKIE_PATH },
   );
   res.redirect(provider.authorizationUrl({ state, redirectUri: callbackUrl(provider.id), codeChallenge }));
@@ -150,7 +150,7 @@ authRouter.get('/:provider/callback', sensitiveAuthRateLimit, async (req, res) =
     const profile = await provider.getProfile({
       code: req.query.code,
       redirectUri: callbackUrl(provider.id),
-      codeVerifier: saved.codeVerifier,
+      codeVerifier: provider.usesPkce ? pkceVerifier(saved.state) : undefined,
     });
     const user = await upsertOAuthUser(provider.id, profile, requestLocale(req));
     setSessionCookie(req, res, signAccessToken(user.id));

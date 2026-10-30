@@ -7,8 +7,13 @@
 // If a file can't be parsed it is stored as it was: it already passed the type check,
 // and refusing it would only break odd but valid images.
 
-/** The image with its metadata blocks removed. */
-export function stripImageMetadata(body: Buffer, type: string): Buffer {
+/**
+ * The image with its metadata blocks removed. `body` comes from a request, so its type
+ * is checked here, not assumed: a request sent as JSON is parsed before the upload route
+ * sees it and could be an array, whose `length` and indexing mean something else.
+ */
+export function stripImageMetadata(body: unknown, type: string): Buffer {
+  if (Array.isArray(body) || !Buffer.isBuffer(body)) throw new TypeError('Expected the image file as bytes');
   try {
     if (type === 'image/jpeg') return stripJpeg(body);
     if (type === 'image/png') return stripPng(body);

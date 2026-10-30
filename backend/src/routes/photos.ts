@@ -3,7 +3,7 @@ import { HttpError, notFound } from '../errors';
 import { getStorage } from '../storage';
 import { currentTreeId } from '../trees/access';
 import { stripImageMetadata } from '../trees/imageMetadata';
-import { detectImageType, findPhoto, PHOTO_MAX_BYTES, savePhoto } from '../trees/photos';
+import { detectImageType, findPhoto, PHOTO_MAX_BYTES, savePhoto, uploadedBytes } from '../trees/photos';
 
 // Mounted at /api/trees/:treeId/photos behind loadTree: viewers can see photos, editors upload.
 export const photosRouter = Router();
@@ -18,12 +18,14 @@ function requireStorage() {
 // The returned url is then saved as a person's photoUrl.
 photosRouter.post('/', express.raw({ type: () => true, limit: PHOTO_MAX_BYTES }), async (req, res) => {
   requireStorage();
-  const body = req.body;
-  if (!Buffer.isBuffer(body) || body.length === 0) throw new HttpError(400, 'Send the image file as the request body');
-  const image = detectImageType(body);
+  // Only raw bytes, and from here on a copy of them: the request's own value (which a
+  // request sent as JSON could make an array or object) never reaches the code below.
+  const bytes = uploadedBytes(req.body);
+  if (!bytes) throw new HttpError(400, 'Send the image file as the request body');
+  const image = detectImageType(bytes);
   if (!image) throw new HttpError(415, 'Upload a JPEG, PNG, WebP or GIF image');
   // EXIF can hold the GPS position where a photo was taken; every tree member can open it.
-  const clean = stripImageMetadata(body, image.type);
+  const clean = stripImageMetadata(bytes, image.type);
   res.status(201).json(await savePhoto(currentTreeId(req), req.user!.id, clean, image));
 });
 

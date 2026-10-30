@@ -39,7 +39,22 @@ const IMAGE_TYPES: { type: string; ext: string; matches: (b: Buffer) => boolean 
  * The image type from the file's first bytes, ignoring what the client claims.
  * Only raster formats are allowed: an SVG served from our origin could run script.
  */
-export function detectImageType(body: Buffer) {
+/**
+ * The uploaded file's bytes as a new Buffer, or null when the request body isn't raw
+ * bytes. The body comes from the request: one sent as JSON is parsed by the app's JSON
+ * parser before the upload route and could be an array or an object, whose `length`
+ * and indexing mean something else. Everything after this works on the copy only, never
+ * on the request's own value.
+ */
+export function uploadedBytes(body: unknown): Buffer | null {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
+  if (!Buffer.isBuffer(body) || body.byteLength === 0) return null;
+  return Buffer.from(body);
+}
+
+export function detectImageType(body: unknown) {
+  // Checked at run time: a request body parsed as JSON could be an array or an object.
+  if (Array.isArray(body) || !Buffer.isBuffer(body)) return null;
   return IMAGE_TYPES.find((t) => body.length >= 12 && t.matches(body)) ?? null;
 }
 
