@@ -15,7 +15,7 @@
     "@xyflow/react": "^12.12.0",
     "html-to-image": "^1.11.11",
     "jspdf": "^4.2.1",
-    "next": "^16.4.0",
+    "next": "^16.4.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"

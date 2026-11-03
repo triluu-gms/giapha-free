@@ -29,7 +29,7 @@ import {
 } from '../trees/accessRequests';
 import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/branch';
 import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
-import { assertPhotoInTree } from '../trees/photos';
+import { assertPhotoInTree, findPhoto, ownPhotoId, releasePhotos } from '../trees/photos';
 import { addSampleFamily } from '../trees/sampleFamily';
 import { treeSettingsUpdateSchema, updateTreeSettings } from '../trees/settings';
 import {
@@ -103,8 +103,22 @@ treesRouter.get('/:treeId/settings', (req, res) => {
 });
 
 treesRouter.patch('/:treeId/settings', requireTreeManager, async (req, res) => {
+  const treeId = currentTreeId(req);
   const changes = treeSettingsUpdateSchema.parse(req.body);
-  res.json(await updateTreeSettings(currentTreeId(req), changes));
+  const background = changes.reportBackground;
+  if (background) {
+    // Only a photo uploaded to this tree: every member's browser loads it from our API.
+    const id = ownPhotoId(treeId, background);
+    if (!id || !(await findPhoto(treeId, id))) {
+      throw new HttpError(400, 'Upload the report background to this tree first', 'reportBackground');
+    }
+  }
+  const previous = req.tree!.settings.reportBackground;
+  const settings = await updateTreeSettings(treeId, changes);
+  if (background !== undefined && previous && previous !== settings.reportBackground) {
+    await releasePhotos(treeId, [previous]);
+  }
+  res.json(settings);
 });
 
 // ---- Backups to Google Drive and downloads: the owner and admins ----

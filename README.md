@@ -142,6 +142,8 @@ Large families (hundreds of people) drawn with one row per đời become extreme
 
 **Defaults:** PCs and tablets start with *Top-down* and all three options on (the sample above becomes about 1.4 : 1). Phones, meaning screens narrower than 768 px, start with *Left to right* and stacked siblings. The choice is remembered in the browser, separately for phones and larger screens, and *Reset to the default for this screen* undoes it. With all options off and *Top-down*, the tree is drawn the classic way.
 
+**Several partners:** when someone has children with more than one partner (a man with two wives, say), each couple's children sit together, in the order the partners are shown, and each couple gets its own line at its own level, so the lines don't merge. With stacked couples, each line leaves from the side of the mother's (or other partner's) card: the first couples' on the left, toward their children, the others on the right.
+
 The layout is pure code in [`frontend/src/lib/treeLayout.ts`](frontend/src/lib/treeLayout.ts). It computes every card position and every line's path (including stacked columns and the wrapped rows' trunk), and the tree view draws those paths as they are.
 
 ## Downloading the tree (PNG or PDF)
@@ -153,6 +155,20 @@ The **Download: Image / PDF** buttons in the top-right corner of the tree save t
 - **Vietnamese text:** the title is drawn with the browser's fonts and embedded in the image, because jsPDF's built-in fonts can't show Vietnamese accents.
 - **PDF:** one page the size of the tree. Zoom in on screen, or print with "fit to page".
 - **Large trees:** images are capped at about 16 million pixels so every browser (including Safari) can make them. Very large trees are therefore scaled down; focus on a branch for more detail.
+
+### Report on a background image
+
+**Download → Report** prints the tree shown over a background image of your choice, such as a decorated frame (khung phả đồ), as a PNG or PDF.
+
+- **The tree:** the same layout as on the tree page, with the options chosen under **Layout** (direction, stacked couples and siblings, chi frames). With wrapped chi, the rows wrap to the shape of the report's tree box instead of the screen's. Only the cards differ: each đời has its own card width. It is drawn as vector shapes at the output's resolution ([`reportTree.ts`](frontend/src/lib/reportTree.ts)), so it stays sharp at any size.
+- **Card width by generation:** four sliders, 40% to 300% of the tree page's card width: generation 1, 2, 3, and 4 and later (default 200, 150, 115 and 85%). Every card keeps the tree page's height; the text grows a little on wider cards and shrinks on narrower ones. The first đời have few people and get wide cards; later đời have many more, so they are narrower. Wider cards get room by spreading the layout apart, which keeps its structure: top-down, space is added across a row only where a card would come too close to another card, a line or a chi frame; left to right (a đời per column), a wider card's column moves the next ones over.
+- **Branch (chi):** print *All branches*, or one chi from a list numbered and labelled as on the tree page (*Chi 2 · Nguyễn Văn Bình*). One chi prints the founders (its first person's parents), that person and all their descendants, and everyone's spouses, in the same layout. The choice is per download and isn't saved.
+- **Card colours:** the cards' background, the name, the dates, and the lines (which also colour the cards' borders and chi frames).
+- **Background:** choose any JPEG, PNG, WebP or GIF image. The image sets the page's shape and size.
+- **Header and tree positions:** the title and the tree each have their own box, set by four margins (top, right, bottom, left) in percent of the image. Put the title on the frame's banner and the tree inside its border. The live preview shows the boxes as red and green dashes.
+- **Title:** the tree's name and a line with the number of people and the date, both editable, in a colour you pick. They are sized to fill their box and centred in it.
+- **Tree size:** the tree fits its box (100%). **−** and **+** make it smaller or larger, 30% to 300%. Enlarged past its box, it is cut off at the box's edges, so it never covers the frame. The size is per download; it isn't saved.
+- **Saved for everyone:** the tree's owner and admins can save the background, both boxes, the colours and the card sizes (**Save for everyone in this tree**), and every member's report then starts with them. The image is uploaded to the tree's photo storage (at most 3000 px on its longest side), so this needs `PHOTO_STORAGE`. Anyone else can still use an image of their own for a download; it never leaves their device.
 
 ## Backups to Google Drive, and data export
 

@@ -142,6 +142,8 @@ Gia đình lớn (hàng trăm người) vẽ mỗi đời một hàng sẽ trở
 
 **Mặc định:** máy tính và máy tính bảng bắt đầu với *Từ trên xuống* và bật cả ba tùy chọn (mẫu ở trên còn khoảng 1,4 : 1). Điện thoại, tức màn hình hẹp hơn 768 px, bắt đầu với *Từ trái sang phải* và xếp cột anh chị em. Lựa chọn được ghi nhớ trong trình duyệt, riêng cho điện thoại và màn hình lớn, và *Về mặc định cho màn hình này* hoàn tác nó. Khi tắt hết tùy chọn và chọn *Từ trên xuống*, cây được vẽ theo kiểu cổ điển.
 
+**Nhiều vợ hoặc chồng:** khi một người có con với nhiều người (ví dụ một ông có hai bà), con của mỗi cặp được xếp cạnh nhau, theo thứ tự các bà trên cây, và mỗi cặp có đường nối riêng ở độ cao riêng, nên các đường không nhập vào nhau. Khi xếp chồng vợ chồng, đường của mỗi cặp đi ra từ cạnh ô của người mẹ (hoặc người còn lại): các cặp đầu ra bên trái, về phía con của họ, các cặp sau ra bên phải.
+
 Bố cục hoàn toàn là mã trong [`frontend/src/lib/treeLayout.ts`](frontend/src/lib/treeLayout.ts). Nó tính vị trí của mọi thẻ và đường đi của mọi đường nối (kể cả các cột xếp chồng và đường trục của các hàng chi), và màn hình cây vẽ đúng các đường đó.
 
 ## Tải cây về (PNG hoặc PDF)
@@ -153,6 +155,20 @@ Các nút **Tải về: Ảnh / PDF** ở góc trên bên phải của cây lưu
 - **Chữ tiếng Việt:** tiêu đề được vẽ bằng phông chữ của trình duyệt và nhúng vào ảnh, vì phông có sẵn của jsPDF không hiện được dấu tiếng Việt.
 - **PDF:** một trang có kích thước bằng cây. Phóng to trên màn hình, hoặc in với "vừa trang".
 - **Cây lớn:** ảnh bị giới hạn khoảng 16 triệu điểm ảnh để trình duyệt nào (kể cả Safari) cũng tạo được. Vì vậy cây rất lớn sẽ bị thu nhỏ; hãy xem quanh một nhánh để rõ hơn.
+
+### Phả đồ trên ảnh nền
+
+**Tải về → Phả đồ** in cây đang hiển thị lên một ảnh nền bạn chọn, ví dụ khung phả đồ trang trí, dưới dạng PNG hoặc PDF.
+
+- **Cây:** cùng bố cục như trang cây, theo các tùy chọn ở mục **Bố cục** (hướng, xếp chồng vợ chồng và anh chị em, khung chi). Khi chia chi thành hàng, các hàng được ngắt theo hình ô đặt cây trên phả đồ thay vì theo màn hình. Chỉ có ô là khác: mỗi đời có độ rộng ô riêng. Cây được vẽ dạng vector theo đúng độ phân giải xuất ([`reportTree.ts`](frontend/src/lib/reportTree.ts)), nên luôn sắc nét.
+- **Độ rộng ô theo đời:** bốn thanh trượt, từ 40% đến 300% độ rộng ô trên trang cây: đời 1, 2, 3, và đời 4 trở đi (mặc định 200, 150, 115 và 85%). Mọi ô giữ chiều cao như trên trang cây; chữ lớn hơn một chút trên ô rộng và nhỏ lại trên ô hẹp. Các đời đầu ít người nên ô rộng; các đời sau đông người hơn nhiều nên hẹp hơn. Ô rộng hơn có chỗ nhờ giãn bố cục ra, vẫn giữ nguyên cấu trúc: khi cây từ trên xuống, chỉ thêm chỗ trong hàng khi ô sắp chạm ô khác, đường nối hoặc khung chi; khi cây từ trái sang phải (mỗi đời một cột), cột có ô rộng hơn sẽ đẩy các cột sau sang bên.
+- **Chi:** in *Tất cả các chi*, hoặc một chi trong danh sách được đánh số và đặt tên như trên trang cây (*Chi 2 · Nguyễn Văn Bình*). Một chi gồm cụ tổ (cha mẹ của người đầu chi), người đầu chi cùng toàn bộ con cháu, và vợ hoặc chồng của mọi người, theo cùng bố cục. Lựa chọn chỉ dùng cho lần tải về đó, không được lưu.
+- **Màu ô:** nền ô, màu tên, màu ngày tháng, và màu đường nối (cũng là màu viền ô và khung chi).
+- **Ảnh nền:** chọn ảnh JPEG, PNG, WebP hoặc GIF bất kỳ. Ảnh quyết định khổ và kích thước trang.
+- **Vị trí tiêu đề và vị trí cây:** tiêu đề và cây có ô riêng, đặt bằng bốn lề (trên, phải, dưới, trái) tính theo phần trăm ảnh. Đặt tiêu đề lên băng chữ của khung và cây trong viền khung. Bản xem trước hiện hai ô bằng nét đứt đỏ và xanh.
+- **Tiêu đề:** tên cây và một dòng ghi số người và ngày, đều sửa được, với màu bạn chọn. Chữ được co giãn cho vừa ô và đặt giữa ô.
+- **Cỡ cây:** cây vừa ô của nó (100%). Nút **−** và **+** thu nhỏ hoặc phóng to, từ 30% đến 300%. Khi lớn hơn ô, cây bị cắt ở mép ô nên không bao giờ đè lên khung. Cỡ cây chỉ dùng cho lần tải về đó, không được lưu.
+- **Lưu cho mọi người:** chủ cây và quản trị viên có thể lưu ảnh nền, hai ô, các màu và cỡ ô (**Lưu cho mọi người trong cây**), và phả đồ của mọi thành viên sẽ bắt đầu với chúng. Ảnh được tải lên kho ảnh của cây (tối đa 3000 px cạnh dài), nên cần `PHOTO_STORAGE`. Người khác vẫn dùng được ảnh của riêng mình cho bản tải về; ảnh đó không rời khỏi thiết bị của họ.
 
 ## Sao lưu lên Google Drive và xuất dữ liệu
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { api as globalApi } from '@/lib/api';
 import { ACCEPTED_PHOTO_TYPES, isUploadedPhoto, prepareForUpload } from '@/lib/photo';
 import type { Gender, Person, PersonInput } from '@/lib/types';
 import DateInput from './DateInput';
@@ -10,27 +9,7 @@ import Icon from './Icon';
 import MoreMenu from './MoreMenu';
 import PhotoEditor from './PhotoEditor';
 import { useCurrentTree } from './TreeProvider';
-
-// Whether the server has photo storage set up; asked once per page load.
-let photoUploadsEnabled: Promise<boolean> | undefined;
-function usePhotoUploads(): boolean {
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    photoUploadsEnabled ??= globalApi
-      .features()
-      .then((f) => f.photoUploads)
-      .catch(() => {
-        photoUploadsEnabled = undefined; // ask again next time
-        return false;
-      });
-    let cancelled = false;
-    photoUploadsEnabled.then((value) => !cancelled && setEnabled(value));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return enabled;
-}
+import { usePhotoUploads } from './usePhotoUploads';
 
 const TEXT_FIELDS = ['firstName', 'lastName', 'birthDate', 'deathDate', 'birthPlace', 'address', 'photoUrl', 'bio'] as const;
 type TextField = (typeof TEXT_FIELDS)[number];

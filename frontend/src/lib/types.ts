@@ -23,7 +23,28 @@ export interface TreeSettings {
   birthCalendar: CalendarKind;
   /** The same for death dates, which Vietnamese families usually keep in âm lịch (for ngày giỗ). */
   deathCalendar: CalendarKind;
+  /** The report's background image (e.g. a decorated frame): one of this tree's uploaded photos, or null. */
+  reportBackground: string | null;
+  /** Where the tree goes on that background: margins in percent of its size. */
+  reportArea: ReportArea;
+  /** Where the title and subtitle go, the same way. */
+  reportTitleArea: ReportArea;
+  /** The report title's colour, "#rrggbb". */
+  reportTextColor: string;
+  /** The report's person cards: background, name and dates colours, and the lines' (and cards' borders) colour. */
+  reportCardColor: string;
+  reportNameColor: string;
+  reportDatesColor: string;
+  reportLineColor: string;
+  /** Card sizes on the report, in percent: the 1st, 2nd and 3rd đời, and the 4th and later. */
+  reportDepthSizes: ReportDepthSizes;
 }
+
+/** Each 40–300. */
+export type ReportDepthSizes = [number, number, number, number];
+
+/** [top, right, bottom, left], each 0–95 percent of the background's height or width, leaving at least 5% between opposite sides. */
+export type ReportArea = [number, number, number, number];
 
 /** Which of a person's dates. */
 export type DateKind = 'birth' | 'death';

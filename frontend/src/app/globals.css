@@ -1982,3 +1982,175 @@ tr.row-error td {
 .access-link-actions select {
   width: auto;
 }
+
+/* ---------- Report: the tree over a background image (ReportDialog) ---------- */
+.report-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 30%);
+}
+.report-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.report-dialog::backdrop {
+  background: rgb(10 12 14 / 60%);
+}
+.report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 4px 18px;
+}
+.report-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.report-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  min-height: 0;
+  padding: 8px 18px 0;
+  overflow: hidden;
+}
+.report-stage {
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  height: min(70dvh, 640px);
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.report-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 18%);
+}
+.report-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 340px;
+  text-align: center;
+  color: var(--muted);
+}
+.report-empty svg {
+  width: 40px;
+  height: 40px;
+}
+.report-controls {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+.report-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.report-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.report-color {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+.report-color input[type='color'] {
+  width: 44px;
+  height: 30px;
+  padding: 2px;
+}
+.report-margins {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.report-margins legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.report-margins p {
+  margin: 0 0 4px;
+}
+.report-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.report-zoom > span {
+  margin-right: auto;
+}
+.report-zoom-value {
+  min-width: 3.5em;
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.report-save p,
+.report-controls > p {
+  margin: 0;
+}
+.report-save {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.report-notice {
+  margin: 0;
+  color: var(--accent);
+}
+.report-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+@media (max-width: 860px) {
+  .report-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .report-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .report-stage {
+    height: 52dvh;
+    min-height: 220px;
+  }
+  .report-controls {
+    overflow: visible;
+  }
+  .report-foot .btn {
+    flex: 1;
+  }
+}

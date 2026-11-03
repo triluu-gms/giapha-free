@@ -17,16 +17,14 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { exportFileName, exportTree, type ExportFormat } from '@/lib/exportTree';
-import { computeTreeLayout, NODE_H, NODE_W, type LayoutOptions, type Point } from '@/lib/treeLayout';
+import { CHI_LABEL, CHI_PAD, computeTreeLayout, NODE_H, NODE_W, type LayoutOptions, type Point } from '@/lib/treeLayout';
 import type { PersonSummary, TreeData } from '@/lib/types';
 import { useI18n } from './I18nProvider';
 import Icon from './Icon';
+import ReportDialog from './ReportDialog';
 import { useDates } from './useDates';
-
-/** Room around a chi's people inside its frame (more on top, for its name). */
-const CHI_PAD = 18;
-const CHI_LABEL = 30;
 
 /** A card shows only a person's summary; their other details load when they're clicked. */
 type PersonNodeData = { person: PersonSummary; selected: boolean; kinship?: string; isMe?: boolean };
@@ -194,8 +192,15 @@ export interface ExportInfo {
   subtitle: string;
 }
 
-/** "Download PNG / PDF" buttons. Exports every node shown, not just what fits on screen. */
-function ExportPanel({ info }: { info: ExportInfo }) {
+/** The `.react-flow__viewport` that holds every node and edge, found from an element inside the flow. */
+const viewportOf = (inside: HTMLElement | null) =>
+  inside?.closest('.react-flow')?.querySelector<HTMLElement>('.react-flow__viewport') ?? null;
+
+/**
+ * "Download PNG / PDF" buttons, and "Report" (the tree shown, in the same layout, over
+ * a background image). Exports every node shown, not just what fits on screen.
+ */
+function ExportPanel({ info, data, layoutOptions }: { info: ExportInfo; data: TreeData; layoutOptions: LayoutOptions }) {
   const { t } = useI18n();
   // The instance's getNodesBounds uses React Flow's measured node sizes. (The standalone
   // getNodesBounds only sees our controlled node objects, which have no `measured` size,
@@ -204,16 +209,17 @@ function ExportPanel({ info }: { info: ExportInfo }) {
   const panel = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reporting, setReporting] = useState(false);
 
   async function run(format: ExportFormat) {
-    const viewport = panel.current?.closest('.react-flow')?.querySelector<HTMLElement>('.react-flow__viewport');
+    const element = viewportOf(panel.current);
     const nodes = getNodes();
-    if (!viewport || !nodes.length) return;
+    if (!element || !nodes.length) return;
     setBusy(format);
     setError(null);
     try {
       await exportTree({
-        viewport,
+        viewport: element,
         bounds: getNodesBounds(nodes),
         format,
         title: info.title,
@@ -239,8 +245,24 @@ function ExportPanel({ info }: { info: ExportInfo }) {
           <Icon name="download" />
           {busy === 'pdf' ? t('tree.exporting') : t('tree.downloadPdf')}
         </button>
+        <button className="btn" onClick={() => setReporting(true)} disabled={!!busy} title={t('report.openTitle')}>
+          <Icon name="image" />
+          {t('report.open')}
+        </button>
       </div>
       {error && <p className="error small export-error">{error}</p>}
+      {/* In <body>, so React Flow's pan and zoom never see the dialog's drags and scrolls. */}
+      {reporting &&
+        createPortal(
+          <ReportDialog
+            data={data}
+            layoutOptions={layoutOptions}
+            title={info.title}
+            subtitle={info.subtitle}
+            onClose={() => setReporting(false)}
+          />,
+          document.body,
+        )}
     </Panel>
   );
 }
@@ -320,7 +342,7 @@ export default function FamilyTree({ data, selectedId, onSelect, kinship, export
         >
           <Background gap={24} />
           <Controls showInteractive={false} />
-          {exportInfo && <ExportPanel info={exportInfo} />}
+          {exportInfo && <ExportPanel info={exportInfo} data={data} layoutOptions={layoutOptions} />}
           <MiniMap
             pannable
             zoomable

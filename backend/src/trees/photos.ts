@@ -120,8 +120,9 @@ export async function removeStoredFiles(refs: string[]): Promise<void> {
 }
 
 /**
- * Call after people stop using these photo URLs (photo replaced, person deleted).
- * Each of this tree's uploaded photos that no person uses any more is deleted.
+ * Call after people stop using these photo URLs (photo replaced, person deleted), or
+ * after the report background changes. Each of this tree's uploaded photos that no
+ * person uses any more, and that isn't the report background, is deleted.
  */
 export async function releasePhotos(treeId: string, urls: unknown[]): Promise<void> {
   if (!Array.isArray(urls)) return;
@@ -132,6 +133,7 @@ export async function releasePhotos(treeId: string, urls: unknown[]): Promise<vo
       `UNWIND $ids AS id
        MATCH (ph:Photo {id: id, treeId: $treeId})
        WHERE NOT EXISTS { MATCH (p:Person {treeId: $treeId}) WHERE p.photoUrl = $prefix + id }
+         AND NOT EXISTS { MATCH (t:Tree {id: $treeId}) WHERE t.reportBackground = $prefix + id }
        WITH ph, ph.storageRef AS ref
        DELETE ph
        RETURN ref`,

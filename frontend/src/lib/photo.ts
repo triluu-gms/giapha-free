@@ -46,14 +46,17 @@ export async function encodeCanvas(canvas: HTMLCanvasElement): Promise<Blob> {
   return blob;
 }
 
-/** Resizes to at most 1200 px on the longest side and re-encodes as WebP (or JPEG). Small files pass through. */
-export async function prepareForUpload(file: File): Promise<Blob> {
+/**
+ * Resizes to at most `maxSide` px (1200 by default) on the longest side and re-encodes
+ * as WebP (or JPEG). Small files pass through.
+ */
+export async function prepareForUpload(file: File, maxSide = MAX_SIDE): Promise<Blob> {
   const image = await loadImage(file).catch(() => {
     throw new Error('not-an-image');
   });
   const width = image.width;
   const height = image.height;
-  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+  const scale = Math.min(1, maxSide / Math.max(width, height));
   // Small files keep their original format (and a GIF its animation).
   if (scale === 1 && file.size <= KEEP_AS_IS_BYTES) {
     if ('close' in image) image.close();

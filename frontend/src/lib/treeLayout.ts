@@ -13,6 +13,9 @@
 //  - wrapChi: each founder's child's branch (a chi) is its own block, and the
 //    blocks wrap onto rows that roughly match the screen's shape.
 // And a direction: generations top-down (rows) or left-to-right (columns).
+// Someone with children by more than one partner (a man with two wives, say) gets
+// one line per couple: each couple's children sit together, and its line runs at its
+// own level (stacked: from the side of the partner's card), so the lines don't merge.
 // The algorithm works in "breadth" (across a đời) and "depth" (from one đời
 // to the next) and maps them to x/y at the end.
 
@@ -20,6 +23,9 @@ import type { TreeData } from './types';
 
 export const NODE_W = 190;
 export const NODE_H = 64;
+/** Room around a chi's people inside its frame (more on top, for its name). */
+export const CHI_PAD = 18;
+export const CHI_LABEL = 30;
 
 export interface LayoutOptions {
   direction: 'down' | 'right';
@@ -39,10 +45,15 @@ export interface TreeLayout {
   couples: { id: string; source: string; target: string; points: Point[] }[];
   /** With wrapChi: each chi's frame, and the family member it starts from. */
   chi: { id: string; root: string; x: number; y: number; width: number; height: number }[];
+  /** Each person's đời, 0 for the top one (the report sizes cards by it). */
+  generations: Map<string, number>;
 }
 
 /** Most brothers and sisters in one stacked column. */
 const MAX_STACK = 4;
+/** Between the lines of different couples in one household: their levels, and (stacked) their side lanes. */
+const LANE_SEP = 12;
+const LANE_SIDE = 9;
 
 type Bd = { b: number; d: number };
 
@@ -246,6 +257,45 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
       hh.members = [blood, ...hh.members.filter((m) => m !== blood)];
     }
   }
+
+  // The couples in each household that have children (or one parent alone, when the
+  // other isn't in the tree), in the household's order: one line, and one group of
+  // children, each. Most households have one; a man with two wives has two.
+  const coupleKey = (ps: string[]) => [...ps].sort().join('+');
+  const lanes = new Map<string, string[]>();
+  {
+    const found = new Map<string, Map<string, number>>();
+    for (const [child, parents] of parentsOf) {
+      const byH = new Map<string, string[]>();
+      for (const p of parents) pushTo(byH, householdOf.get(p)!, p);
+      for (const [ph, ps] of byH) {
+        if (ph === householdOf.get(child)) continue;
+        const members = household.get(ph)!.members;
+        const at = ps.reduce((sum, p) => sum + members.indexOf(p), 0) / ps.length;
+        const keys = found.get(ph) ?? new Map<string, number>();
+        keys.set(coupleKey(ps), at);
+        found.set(ph, keys);
+      }
+    }
+    for (const [h, keys] of found) lanes.set(h, [...keys].sort((a, b) => a[1] - b[1]).map(([k]) => k));
+  }
+  /** Which of household `h`'s couples `ps` is, of how many. */
+  const laneOf = (h: string, ps: string[]) => {
+    const list = lanes.get(h);
+    return { lane: Math.max(0, list?.indexOf(coupleKey(ps)) ?? 0), count: list?.length ?? 1 };
+  };
+  /**
+   * Of a couple in household `h`, the partner (rather than the one they share, such as
+   * a husband with two wives): whose card a stacked household's line leaves from.
+   */
+  const partnerOf = (h: string, ps: string[]) => {
+    const inCouples = (m: string) => (lanes.get(h) ?? []).filter((k) => k.split('+').includes(m)).length;
+    return ps.reduce((a, b) => (inCouples(b) < inCouples(a) ? b : a));
+  };
+  /** The couple (in `parent`) that child household `k` comes from. */
+  const kidLane = (parent: string, k: string) =>
+    laneOf(parent, (parentsOf.get(bloodMember(k, parent)) ?? []).filter((p) => householdOf.get(p) === parent)).lane;
+
   const branches = new Map<string, string[]>();
   for (const [child, parent] of primaryParent) pushTo(branches, parent, child);
   for (const [parent, kids] of branches) {
@@ -254,6 +304,8 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     kids.sort((a, b) => born(a).localeCompare(born(b)));
     // Stacked siblings come after those with children (stable: birth order kept in each group).
     if (opts.stackSiblings) kids.sort((a, b) => Number(!branches.has(a)) - Number(!branches.has(b)));
+    // Each couple's children together, in the household's order (stable: the order above kept in each).
+    if (laneOf(parent, []).count > 1) kids.sort((a, b) => kidLane(parent, a) - kidLane(parent, b));
   }
   const isLeaf = (h: string) => !branches.has(h);
 
@@ -302,7 +354,7 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     const segments: Branch[] = [];
     for (let i = 0; i < kids.length; ) {
       let j = i;
-      while (opts.stackSiblings && j < kids.length && isLeaf(kids[j])) j++;
+      while (opts.stackSiblings && j < kids.length && isLeaf(kids[j]) && kidLane(h, kids[j]) === kidLane(h, kids[i])) j++;
       if (j - i >= 2) {
         segments.push(stackBlock(kids.slice(i, j), r));
         i = j;
@@ -450,6 +502,9 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
 
   // 5. Lines from each parent household to the child. A married couple's line
   //    starts between them (or under them, when stacked); other parents' from their card.
+  //    In a household with several couples, each couple's line runs at its own level,
+  //    and when stacked it leaves from the side of the partner's card: the first
+  //    couples' (whose children are on the left) on the left, the others on the right.
   const links: TreeLayout['links'] = [];
   for (const [child, parents] of parentsOf) {
     const c = pos.get(child);
@@ -463,24 +518,42 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     for (const [ph, ps] of byHousehold) {
       const hp = hpos.get(ph)!;
       const bottom = hp.d + depthOf(ph);
-      const starts: Bd[] = stackedCouples
-        ? [{ b: hp.b + B / 2, d: bottom }]
-        : ps.length === 2
-          ? [{ b: (pos.get(ps[0])!.b + pos.get(ps[1])!.b + B) / 2, d: pos.get(ps[0])!.d + D / 2 }]
-          : ps.map((p) => ({ b: pos.get(p)!.b + B / 2, d: pos.get(p)!.d + D }));
+      const { lane, count } = laneOf(ph, ps);
+      const shift = count > 1 ? (lane - (count - 1) / 2) * Math.min(LANE_SEP, (RANK_SEP * 0.6) / (count - 1)) : 0;
+      /** Points before the start: the stub out of the partner's card, for a stacked household's side lane. */
+      let lead: Bd[] = [];
+      let starts: Bd[];
+      if (stackedCouples && count > 1) {
+        const pp = pos.get(partnerOf(ph, ps))!;
+        const leftCount = Math.ceil(count / 2);
+        // Outer lanes for the outer groups of children, so the lanes don't cross.
+        const left = lane < leftCount;
+        const out = LANE_SIDE * (left ? leftCount - lane : lane - leftCount + 1);
+        const edge = left ? pp.b : pp.b + B;
+        lead = [{ b: edge, d: pp.d + D / 2 }];
+        starts = [{ b: left ? edge - out : edge + out, d: pp.d + D / 2 }];
+      } else {
+        starts = stackedCouples
+          ? [{ b: hp.b + B / 2, d: bottom }]
+          : ps.length === 2
+            ? [{ b: (pos.get(ps[0])!.b + pos.get(ps[1])!.b + B) / 2, d: pos.get(ps[0])!.d + D / 2 }]
+            : ps.map((p) => ({ b: pos.get(p)!.b + B / 2, d: pos.get(p)!.d + D }));
+      }
       for (const s of starts) {
-        const mid = bottom + RANK_SEP / 2;
+        const mid = bottom + RANK_SEP / 2 + shift;
         let path: Bd[];
         if (route) {
+          const bus = route.bus + shift;
+          const firstBus = route.firstBus + shift;
           path =
             route.trunk === null || route.bus === route.firstBus
-              ? [s, { b: s.b, d: route.bus }, { b: enter.b, d: route.bus }, enter]
+              ? [s, { b: s.b, d: bus }, { b: enter.b, d: bus }, enter]
               : [
                   s,
-                  { b: s.b, d: route.firstBus },
-                  { b: route.trunk, d: route.firstBus },
-                  { b: route.trunk, d: route.bus },
-                  { b: enter.b, d: route.bus },
+                  { b: s.b, d: firstBus },
+                  { b: route.trunk + shift, d: firstBus },
+                  { b: route.trunk + shift, d: bus },
+                  { b: enter.b, d: bus },
                   enter,
                 ];
         } else if (spine !== undefined) {
@@ -488,7 +561,12 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
         } else {
           path = [s, { b: s.b, d: mid }, { b: enter.b, d: mid }, enter];
         }
-        links.push({ id: `p-${ps[0]}-${child}-${links.length}`, source: ps[0], target: child, points: path.map(toXY) });
+        links.push({
+          id: `p-${ps[0]}-${child}-${links.length}`,
+          source: lead.length ? partnerOf(ph, ps) : ps[0],
+          target: child,
+          points: [...lead, ...path].map(toXY),
+        });
       }
     }
   }
@@ -508,7 +586,8 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     return { id: `chi-${i}`, root: bl.root, x: tl.x, y: tl.y, width: down ? bl.w : bl.h, height: down ? bl.h : bl.w };
   });
 
-  return { positions: new Map([...pos].map(([id, p]) => [id, toXY(p)])), links, couples, chi };
+  const generations = new Map(data.nodes.map((p) => [p.id, rank.get(householdOf.get(p.id)!) ?? 0]));
+  return { positions: new Map([...pos].map(([id, p]) => [id, toXY(p)])), links, couples, chi, generations };
 }
 
 /** Where a layout starts: compact on wide screens, left-to-right on phones. */
