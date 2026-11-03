@@ -380,6 +380,13 @@ export default function ReportDialog({
             <span>{t('report.textColor')}</span>
             <input type="color" value={textColor} onChange={(e) => setTextColor(e.target.value)} />
           </label>
+          <MarginsField
+            legend={t('report.titleArea')}
+            hint={t('report.titleAreaHint')}
+            area={titleArea}
+            onChange={setTitleArea}
+          />
+
           <fieldset className="report-margins report-colors">
             <legend>{t('report.cardColors')}</legend>
             {COLOR_FIELDS.map((field) => (
@@ -394,12 +401,6 @@ export default function ReportDialog({
             ))}
           </fieldset>
 
-          <MarginsField
-            legend={t('report.titleArea')}
-            hint={t('report.titleAreaHint')}
-            area={titleArea}
-            onChange={setTitleArea}
-          />
           <MarginsField legend={t('report.treeArea')} hint={t('report.treeAreaHint')} area={area} onChange={setArea} />
 
           <fieldset className="report-margins">
