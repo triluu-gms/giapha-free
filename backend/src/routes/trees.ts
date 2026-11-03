@@ -31,7 +31,7 @@ import { assertBranchRoot, assertNotBranchEditor, branchOf } from '../trees/bran
 import { loadExistingTree, planImport, runImport } from '../trees/importPeople';
 import { assertPhotoInTree, findPhoto, ownPhotoId, releasePhotos } from '../trees/photos';
 import { addSampleFamily } from '../trees/sampleFamily';
-import { treeSettingsUpdateSchema, updateTreeSettings } from '../trees/settings';
+import { isReportPreset, treeSettingsUpdateSchema, updateTreeSettings } from '../trees/settings';
 import {
   assertCanGrant,
   currentTreeId,
@@ -106,8 +106,8 @@ treesRouter.patch('/:treeId/settings', requireTreeManager, async (req, res) => {
   const treeId = currentTreeId(req);
   const changes = treeSettingsUpdateSchema.parse(req.body);
   const background = changes.reportBackground;
-  if (background) {
-    // Only a photo uploaded to this tree: every member's browser loads it from our API.
+  if (background && !isReportPreset(background)) {
+    // Otherwise only a photo uploaded to this tree: every member's browser loads it from our API.
     const id = ownPhotoId(treeId, background);
     if (!id || !(await findPhoto(treeId, id))) {
       throw new HttpError(400, 'Upload the report background to this tree first', 'reportBackground');

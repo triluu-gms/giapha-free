@@ -12,7 +12,17 @@ import {
   REPORT_ZOOM_MIN,
   type ReportBackground,
 } from '@/lib/report';
+import {
+  DEFAULT_PRESET,
+  presetImage,
+  presetOf,
+  presetThumb,
+  presetValue,
+  REPORT_PRESETS,
+  type ReportPreset,
+} from '@/lib/reportPresets';
 import { chiData, DEPTH_SIZE_MAX, DEPTH_SIZE_MIN, layOutReportTree, listChi, sizeReportTree } from '@/lib/reportTree';
+import type { MessageKey } from '@/lib/i18n';
 import type { LayoutOptions } from '@/lib/treeLayout';
 import type { ReportArea, ReportDepthSizes, TreeData } from '@/lib/types';
 import { useI18n } from './I18nProvider';
@@ -21,8 +31,11 @@ import { useCurrentTree } from './TreeProvider';
 import { useDates } from './useDates';
 import { usePhotoUploads } from './usePhotoUploads';
 
-/** The tree's saved background, or an image just chosen on this device (not uploaded until saved). */
-type Source = { kind: 'saved'; url: string } | { kind: 'file'; file: File } | null;
+/**
+ * A ready-made background (lib/reportPresets.ts), the tree's saved photo, or an image
+ * just chosen on this device (not uploaded until saved).
+ */
+type Source = { kind: 'preset'; id: string } | { kind: 'saved'; url: string } | { kind: 'file'; file: File };
 
 /** The preview's longest side, in canvas pixels. */
 const PREVIEW_SIDE = 1000;
@@ -112,23 +125,34 @@ export default function ReportDialog({
   const preview = useRef<HTMLCanvasElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // A tree with no background saved yet starts with the first ready-made one and its boxes and colours.
+  const savedPreset = presetOf(saved.reportBackground);
+  const start = saved.reportBackground ? null : DEFAULT_PRESET;
   const [source, setSource] = useState<Source>(() =>
-    saved.reportBackground ? { kind: 'saved', url: saved.reportBackground } : null,
+    savedPreset
+      ? { kind: 'preset', id: savedPreset.id }
+      : saved.reportBackground
+        ? { kind: 'saved', url: saved.reportBackground }
+        : { kind: 'preset', id: DEFAULT_PRESET.id },
   );
-  const [area, setArea] = useState<ReportArea>(saved.reportArea);
-  const [titleArea, setTitleArea] = useState<ReportArea>(saved.reportTitleArea);
+  const [area, setArea] = useState<ReportArea>(start?.area ?? saved.reportArea);
+  const [titleArea, setTitleArea] = useState<ReportArea>(start?.titleArea ?? saved.reportTitleArea);
   // Per download, not saved: the right size depends on how much of the tree is shown.
   const [zoom, setZoom] = useState(1);
   // Per download, like the size: the first person of the one chi to print, or '' for all of them.
   const [chi, setChi] = useState('');
-  const [textColor, setTextColor] = useState(saved.reportTextColor);
+  const [textColor, setTextColor] = useState(start?.textColor ?? saved.reportTextColor);
   const [depthSizes, setDepthSizes] = useState<ReportDepthSizes>(saved.reportDepthSizes);
-  const [colors, setColors] = useState<CardColors>(() => ({
-    card: saved.reportCardColor,
-    name: saved.reportNameColor,
-    dates: saved.reportDatesColor,
-    line: saved.reportLineColor,
-  }));
+  const [colors, setColors] = useState<CardColors>(() =>
+    start
+      ? { ...start.colors }
+      : {
+          card: saved.reportCardColor,
+          name: saved.reportNameColor,
+          dates: saved.reportDatesColor,
+          line: saved.reportLineColor,
+        },
+  );
   const [title, setTitle] = useState(suggestedTitle);
   const [subtitle, setSubtitle] = useState(suggestedSubtitle);
   const [background, setBackground] = useState<ReportBackground | null>(null);
@@ -146,17 +170,15 @@ export default function ReportDialog({
   }, []);
 
   useEffect(() => {
-    if (!source) {
-      setBackground(null);
-      return;
-    }
     let cancelled = false;
     (async () => {
-      // A saved background is one of the tree's photos: same-origin, so the canvas stays exportable.
+      // Ready-made backgrounds and the tree's photos are same-origin, so the canvas stays exportable.
       const blob =
         source.kind === 'file'
           ? source.file
-          : await fetch(source.url, { credentials: 'same-origin' }).then((res) => {
+          : await fetch(source.kind === 'preset' ? presetImage(source.id) : source.url, {
+              credentials: 'same-origin',
+            }).then((res) => {
               if (!res.ok) throw new Error(String(res.status));
               return res.blob();
             });
@@ -217,9 +239,10 @@ export default function ReportDialog({
   }, [background, reportTree, treeStyle, area, titleArea, textColor, title, subtitle, font, zoom]);
 
   const savedUrl = saved.reportBackground;
-  const currentUrl = source?.kind === 'saved' ? source.url : null;
+  // What would be saved as the background, before uploading a newly chosen image.
+  const currentUrl = source.kind === 'preset' ? presetValue(source.id) : source.kind === 'saved' ? source.url : null;
   const changed =
-    source?.kind === 'file' ||
+    source.kind === 'file' ||
     currentUrl !== savedUrl ||
     textColor !== saved.reportTextColor ||
     COLOR_FIELDS.some((f) => colors[f] !== saved[SETTING_OF[f]]) ||
@@ -227,7 +250,7 @@ export default function ReportDialog({
     !sameArea(area, saved.reportArea) ||
     !sameArea(titleArea, saved.reportTitleArea);
   // Saving a new image uploads it to the tree's photo storage, which a server may not have.
-  const canSave = canManage && (source?.kind !== 'file' || uploads);
+  const canSave = canManage && (source.kind !== 'file' || uploads);
   const ready = !!background;
 
   function choose(e: ChangeEvent<HTMLInputElement>) {
@@ -237,6 +260,17 @@ export default function ReportDialog({
     setError(null);
     setNotice(null);
     setSource({ kind: 'file', file });
+  }
+
+  /** A ready-made background, with the boxes and colours that suit it (all adjustable afterwards). */
+  function choosePreset(preset: ReportPreset) {
+    setError(null);
+    setNotice(null);
+    setSource({ kind: 'preset', id: preset.id });
+    setArea(preset.area);
+    setTitleArea(preset.titleArea);
+    setTextColor(preset.textColor);
+    setColors({ ...preset.colors });
   }
 
   const zoomBy = (steps: number) =>
@@ -275,7 +309,7 @@ export default function ReportDialog({
     setNotice(null);
     try {
       let url = currentUrl;
-      if (source?.kind === 'file') {
+      if (source.kind === 'file') {
         let image: Blob;
         try {
           image = await prepareForUpload(source.file, REPORT_BACKGROUND_MAX_SIDE);
@@ -295,9 +329,9 @@ export default function ReportDialog({
         reportLineColor: colors.line,
         reportDepthSizes: depthSizes,
       });
-      if (url && source?.kind === 'file') setSource({ kind: 'saved', url });
+      if (url && source.kind === 'file') setSource({ kind: 'saved', url });
       await refreshTrees(tree.id); // the tree list carries the settings
-      setNotice(t(url ? 'report.saved' : 'report.removedSaved'));
+      setNotice(t('report.saved'));
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -324,15 +358,7 @@ export default function ReportDialog({
 
       <div className="report-body">
         <div className="report-stage">
-          {!source ? (
-            <div className="report-empty">
-              <Icon name="image" />
-              <p>{t('report.emptyHint')}</p>
-              <button type="button" className="btn primary" onClick={() => fileInput.current?.click()}>
-                {t('report.chooseBackground')}
-              </button>
-            </div>
-          ) : ready ? (
+          {ready ? (
             <canvas ref={preview} className="report-preview" aria-label={t('report.previewLabel')} />
           ) : (
             <p className="muted">{t('tree.exporting')}</p>
@@ -341,17 +367,36 @@ export default function ReportDialog({
 
         <div className="report-controls">
           <input ref={fileInput} type="file" accept={ACCEPTED_PHOTO_TYPES} hidden onChange={choose} />
-          <div className="report-row">
-            <button type="button" className="btn small" onClick={() => fileInput.current?.click()}>
-              <Icon name="image" />
-              {source ? t('report.changeBackground') : t('report.chooseBackground')}
-            </button>
-            {source && (
-              <button type="button" className="btn small ghost" onClick={() => setSource(null)}>
-                {t('report.removeBackground')}
+          <fieldset className="report-margins">
+            <legend>{t('report.background')}</legend>
+            <div className="report-gallery">
+              {REPORT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="report-swatch"
+                  aria-pressed={source.kind === 'preset' && source.id === preset.id}
+                  onClick={() => choosePreset(preset)}
+                  title={t(`report.preset.${preset.id}` as MessageKey)}
+                >
+                  <img src={presetThumb(preset.id)} alt="" width={120} height={80} />
+                  <span>{t(`report.preset.${preset.id}` as MessageKey)}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="report-swatch report-swatch-own"
+                aria-pressed={source.kind === 'file' || source.kind === 'saved'}
+                onClick={() => fileInput.current?.click()}
+                title={t('report.uploadOwnTitle')}
+              >
+                <span className="report-swatch-icon" aria-hidden="true">
+                  <Icon name="image" />
+                </span>
+                <span>{t('report.uploadOwn')}</span>
               </button>
-            )}
-          </div>
+            </div>
+          </fieldset>
 
           {chiRoots.length > 1 && (
             <label className="report-field">

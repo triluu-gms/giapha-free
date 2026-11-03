@@ -5,6 +5,15 @@ import { query } from '../db';
 // that tree. A missing property means its default, so existing trees need no migration.
 
 const calendar = z.enum(['solar', 'lunisolar']);
+
+/**
+ * The report's ready-made backgrounds (frontend/src/lib/reportPresets.ts, images in
+ * frontend/public/report-backgrounds/). A saved background is "preset:<id>" for one
+ * of these, or one of the tree's uploaded photos.
+ */
+export const REPORT_BACKGROUND_PRESETS = ['cung-dinh', 'sen-hong', 'may-ngoc', 'toi-gian', 'hoang-hon'];
+export const isReportPreset = (value: string) =>
+  value.startsWith('preset:') && REPORT_BACKGROUND_PRESETS.includes(value.slice('preset:'.length));
 const color = z.string().regex(/^#[0-9a-f]{6}$/i);
 /** A card's size on the report, in percent of the tree page's card. */
 const cardSize = z.number().min(40).max(300);
@@ -29,7 +38,8 @@ export const treeSettingsSchema = z.object({
   deathCalendar: calendar,
   /**
    * The printed report (frontend/src/lib/report.ts) draws the tree over this image,
-   * e.g. a decorated frame. One of this tree's uploaded photos (trees/photos.ts), or null.
+   * e.g. a decorated frame: "preset:<id>" for a ready-made one, one of this tree's
+   * uploaded photos (trees/photos.ts), or null.
    */
   reportBackground: z.string().max(300).nullable(),
   /**

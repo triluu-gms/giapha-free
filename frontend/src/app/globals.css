@@ -2035,18 +2035,6 @@ tr.row-error td {
   max-height: 100%;
   box-shadow: 0 2px 12px rgb(0 0 0 / 18%);
 }
-.report-empty {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  max-width: 340px;
-  text-align: center;
-  color: var(--muted);
-}
-.report-empty svg {
-  width: 40px;
-  height: 40px;
-}
 .report-controls {
   display: grid;
   align-content: start;
@@ -2089,6 +2077,50 @@ tr.row-error td {
 }
 .report-margins p {
   margin: 0 0 4px;
+}
+.report-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.report-swatch {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.report-swatch img,
+.report-swatch-icon {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  border-radius: 5px;
+}
+.report-swatch-icon {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.report-swatch:hover {
+  border-color: var(--accent);
+}
+.report-swatch[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.report-swatch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 .report-zoom {
   display: flex;
