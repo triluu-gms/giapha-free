@@ -721,9 +721,25 @@ label.inline select {
 .react-flow__minimap-node.deceased {
   fill: var(--deceased-bg);
 }
-.person-node.deceased .person-node-name::after {
-  content: ' †';
+/* † or a lotus after a deceased person's name (DeathMark.tsx) */
+.death-mark {
+  margin-left: 0.3em;
   color: var(--muted);
+  font-weight: 400;
+}
+/* The lotus fills only the middle of its box, so it is drawn a little larger than the text. */
+.death-mark svg {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.25em;
+}
+.death-mark-field {
+  display: grid;
+  gap: 6px;
+}
+.death-mark-sample {
+  font-size: 1.15em;
+  line-height: 1;
 }
 .person-node-name {
   font-weight: 600;
@@ -2121,6 +2137,51 @@ tr.row-error td {
 .report-swatch:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+/* The chi to print: a scrolling list of checkbox rows, "All branches" first. */
+.report-chi-list {
+  display: grid;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.report-chi-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text);
+  cursor: pointer;
+}
+.report-chi-option:hover {
+  background: var(--surface-2);
+}
+.report-chi-option:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.report-chi-option input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.report-chi-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.report-chi-all {
+  margin-bottom: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
 }
 .report-zoom {
   display: flex;

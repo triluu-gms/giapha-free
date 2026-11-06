@@ -25,6 +25,8 @@ export const personCreateSchema = z.object({
   gender: z.enum(genders).optional(),
   birthDate: partialDate.nullable().optional(),
   deathDate: partialDate.nullable().optional(),
+  /** The mark after a deceased person's name: the lotus, or null for the cross (†). */
+  deathMark: z.enum(['lotus']).nullable().optional(),
   birthPlace: optionalText(200),
   /** Where the person lives (or last lived). */
   address: optionalText(300),

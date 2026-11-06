@@ -20,8 +20,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { exportFileName, exportTree, type ExportFormat } from '@/lib/exportTree';
 import { CHI_LABEL, CHI_PAD, computeTreeLayout, NODE_H, NODE_W, type LayoutOptions, type Point } from '@/lib/treeLayout';
+import { deathMarkOf } from '@/lib/deathMark';
 import type { PersonSummary, TreeData } from '@/lib/types';
 import { useI18n } from './I18nProvider';
+import DeathMark from './DeathMark';
 import Icon from './Icon';
 import ReportDialog from './ReportDialog';
 import { useDates } from './useDates';
@@ -52,7 +54,10 @@ function PersonCard({ data }: NodeProps<PersonNode>) {
       {isMe && <span className="me-marker">{t('person.you')}</span>}
       <Handle type="target" position={Position.Top} id="top" />
       <Handle type="target" position={Position.Left} id="left" />
-      <div className="person-node-name">{formatName(person)}</div>
+      <div className="person-node-name">
+        {formatName(person)}
+        {person.deathDate && <DeathMark mark={deathMarkOf(person)} />}
+      </div>
       <div className="person-node-years">{formatLifespan(person)}</div>
       <Handle type="source" position={Position.Right} id="right" />
       <Handle type="source" position={Position.Bottom} id="bottom" />

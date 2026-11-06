@@ -7,6 +7,8 @@ export interface Person {
   gender?: Gender;
   birthDate?: string | null;
   deathDate?: string | null;
+  /** The mark after a deceased person's name: 'lotus', or null for the cross (†). See lib/deathMark.ts. */
+  deathMark?: 'lotus' | null;
   birthPlace?: string | null;
   address?: string | null;
   photoUrl?: string | null;
@@ -59,7 +61,7 @@ export type PersonInput = Partial<Omit<Person, 'id' | 'createdAt' | 'updatedAt'>
  * enough for a card, the layout and kinship terms. The rest of a person's details
  * come with GET /persons/:id, for the person clicked.
  */
-export type PersonSummary = Pick<Person, 'id' | 'firstName' | 'lastName' | 'gender' | 'birthDate' | 'deathDate'>;
+export type PersonSummary = Pick<Person, 'id' | 'firstName' | 'lastName' | 'gender' | 'birthDate' | 'deathDate' | 'deathMark'>;
 
 export interface PersonDetail {
   /** Everything about this person. */

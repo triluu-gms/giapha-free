@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { deathMarkOf } from '@/lib/deathMark';
 import type { DateKind, PersonDetail, PersonSummary, RelationshipType } from '@/lib/types';
 import AddRelative from './AddRelative';
+import DeathMark from './DeathMark';
 import Icon from './Icon';
 import MergePeople from './MergePeople';
 import MoreMenu from './MoreMenu';
@@ -157,7 +159,9 @@ export default function PersonPanel({ personId, version, onSelect, onFocus, onCh
         )}
         <div>
           <h2>
-            {formatName(person)} {isMe && <span className="badge me-badge">{t('person.you')}</span>}
+            {formatName(person)}
+            {person.deathDate && <DeathMark mark={deathMarkOf(person)} />}{' '}
+            {isMe && <span className="badge me-badge">{t('person.you')}</span>}
           </h2>
           <p className="muted">{formatLifespan(person) || t('person.datesUnknown')}</p>
         </div>
