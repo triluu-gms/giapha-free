@@ -16,6 +16,7 @@ import { getDriver, query } from './db';
 import { HttpError } from './errors';
 import { runDueBackups } from './backups/backups';
 import { driveConfigured } from './backups/userDrive';
+import { runMeetingReminders } from './reminders/meetings';
 import { runReminders } from './reminders/run';
 import { authRouter } from './routes/auth';
 import { driveRouter } from './routes/drive';
@@ -99,10 +100,14 @@ app.get('/api/cron/keepalive', async (req, res) => {
 });
 
 // GET /api/cron/reminders -> called daily by Vercel Cron at 07:00 Vietnam time (see vercel.json).
-// Emails death anniversary (ngày giỗ) reminders that are due today; safe to call again.
+// Emails the death anniversary (ngày giỗ) and family meeting (họp họ) reminders that are
+// due today, sharing the function's time; safe to call again.
 app.get('/api/cron/reminders', async (req, res) => {
   assertCronCaller(req);
-  res.json(await runReminders());
+  const started = Date.now();
+  const anniversaries = await runReminders(new Date(), 30_000);
+  const meetings = await runMeetingReminders(new Date(), Math.max(5_000, 45_000 - (Date.now() - started)));
+  res.json({ ...anniversaries, meetings });
 });
 
 app.use('/api/auth', authRouter);

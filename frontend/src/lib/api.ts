@@ -15,6 +15,8 @@ import type {
   InvitationPreview,
   InviteRole,
   JoinPreview,
+  Meeting,
+  MeetingInput,
   Person,
   PersonDetail,
   PersonInput,
@@ -144,7 +146,7 @@ export const api = {
 
   /** Death anniversary reminder emails: the switch, how early, and who for. */
   reminderPreferences: () => request<ReminderPreferences>('/api/auth/reminders'),
-  updateReminderPreferences: (changes: { enabled?: boolean; daysBefore?: number }) =>
+  updateReminderPreferences: (changes: Partial<Omit<ReminderPreferences, 'people'>>) =>
     request<ReminderPreferences>('/api/auth/reminders', { method: 'PATCH', body: JSON.stringify(changes) }),
 
   // ---- Trees ----
@@ -289,6 +291,13 @@ export function treeApi(treeId: string) {
     /** Changes this tree's settings (its owner only). Read them from the tree summary. */
     updateSettings: (changes: Partial<TreeSettings>) =>
       request<TreeSettings>(`${base}/settings`, { method: 'PATCH', body: JSON.stringify(changes) }),
+    /** Family meetings (họp họ, họp chi), soonest first; members read them, the owner and admins change them. */
+    listMeetings: () => request<Meeting[]>(`${base}/meetings`),
+    createMeeting: (input: MeetingInput) =>
+      request<{ id: string }>(`${base}/meetings`, { method: 'POST', body: JSON.stringify(input) }),
+    updateMeeting: (id: string, input: MeetingInput) =>
+      request<void>(`${base}/meetings/${enc(id)}`, { method: 'PUT', body: JSON.stringify(input) }),
+    deleteMeeting: (id: string) => request<void>(`${base}/meetings/${enc(id)}`, { method: 'DELETE' }),
     /** Scheduled backups to an admin's Google Drive. */
     backupStatus: () => request<BackupStatus>(`${base}/backup`),
     updateBackup: (changes: { frequency: BackupFrequency | 'off'; keep?: number }) =>

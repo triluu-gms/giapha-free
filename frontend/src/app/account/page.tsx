@@ -127,6 +127,7 @@ function Reminders({ email }: { email: string | null }) {
   const { t, formatName, errorMessage } = useI18n();
   const [prefs, setPrefs] = useState<ReminderPreferences | null>(null);
   const [days, setDays] = useState('3');
+  const [meetingDays, setMeetingDays] = useState('7');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
@@ -136,17 +137,19 @@ function Reminders({ email }: { email: string | null }) {
       .then((p) => {
         setPrefs(p);
         setDays(String(p.daysBefore));
+        setMeetingDays(String(p.meetingDaysBefore));
       })
       .catch((err: Error) => setNotice({ text: err.message, error: true }));
   }, []);
 
-  async function save(changes: { enabled?: boolean; daysBefore?: number }) {
+  async function save(changes: Partial<Omit<ReminderPreferences, 'people'>>) {
     setBusy(true);
     setNotice(null);
     try {
       const saved = await api.updateReminderPreferences(changes);
       setPrefs(saved);
       setDays(String(saved.daysBefore));
+      setMeetingDays(String(saved.meetingDaysBefore));
       setNotice({ text: t('reminder.saved') });
     } catch (err) {
       setNotice({ text: errorMessage(err), error: true });
@@ -171,6 +174,11 @@ function Reminders({ email }: { email: string | null }) {
   function saveDays(e: FormEvent) {
     e.preventDefault();
     void save({ daysBefore: Number(days) });
+  }
+
+  function saveMeetingDays(e: FormEvent) {
+    e.preventDefault();
+    void save({ meetingDaysBefore: Number(meetingDays) });
   }
 
   return (
@@ -221,6 +229,66 @@ function Reminders({ email }: { email: string | null }) {
                   </button>
                 </span>
               </form>
+            </li>
+          </ul>
+
+          <h3>{t('reminder.meetingsTitle')}</h3>
+          <ul className="settings-list">
+            <li>
+              <label className="setting">
+                <span>
+                  <strong>{t('reminder.meetingsEnable')}</strong>
+                  <span className="muted small">{t('reminder.meetingsEnableHint', { email })}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="switch"
+                  checked={prefs.meetingsEnabled}
+                  disabled={busy}
+                  onChange={(e) => void save({ meetingsEnabled: e.target.checked })}
+                />
+              </label>
+            </li>
+            <li>
+              <form className="setting" onSubmit={saveMeetingDays}>
+                <span>
+                  <strong id="meeting-days-label">{t('reminder.daysBefore')}</strong>
+                  <span className="muted small">{t('reminder.meetingDaysHint')}</span>
+                </span>
+                <span className="setting-control">
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    value={meetingDays}
+                    onChange={(e) => setMeetingDays(e.target.value)}
+                    disabled={busy}
+                    required
+                    aria-labelledby="meeting-days-label"
+                  />
+                  <button className="btn small primary" disabled={busy || Number(meetingDays) === prefs.meetingDaysBefore}>
+                    {t('common.save')}
+                  </button>
+                </span>
+              </form>
+            </li>
+            <li>
+              <label className="setting">
+                <span>
+                  <strong id="meeting-scope-label">{t('reminder.meetingScope')}</strong>
+                  <span className="muted small">{t('reminder.meetingScopeHint')}</span>
+                </span>
+                <select
+                  value={prefs.meetingScope}
+                  disabled={busy}
+                  onChange={(e) => void save({ meetingScope: e.target.value as 'all' | 'mine' })}
+                  aria-labelledby="meeting-scope-label"
+                >
+                  <option value="all">{t('reminder.scopeAll')}</option>
+                  <option value="mine">{t('reminder.scopeMine')}</option>
+                </select>
+              </label>
             </li>
           </ul>
 

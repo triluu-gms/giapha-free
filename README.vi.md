@@ -37,6 +37,8 @@ Trình duyệt chỉ nói chuyện với tên miền của frontend. Next.js chu
         driveRefreshToken?, driveEmail?, driveConnectedAt?})         // Google Drive của họ, để sao lưu (token đã mã hóa)
 (:User)-[:HAS_ACCOUNT]->(:Account {provider, providerAccountId})        // mỗi đăng nhập mạng xã hội đã liên kết một node
 (:User)-[:REMINDS {since, lastSentFor?}]->(:Person)   // gửi email cho tôi trước ngày giỗ của người này
+(:Meeting {id, treeId, title, chiRootId?, repeat, calendar, month?, day?, weekday?, week?, date?, time?, place?, note?})   // họp họ / họp chi
+(:User)-[:MEETING_SENT {lastSentFor}]->(:Meeting)       // nhắc họp họ đã gửi
 
 (:Tree {id, name, createdAt, bulkDelete?, birthCalendar?, deathCalendar?,
         backupFrequency?, backupKeep?, backupUserId?, backupLocale?, backupFolderId?, backupFolderUrl?,
@@ -160,8 +162,8 @@ Các nút **Tải về: Ảnh / PDF** ở góc trên bên phải của cây lưu
 
 **Tải về → Phả đồ** in cây đang hiển thị lên một ảnh nền bạn chọn, ví dụ khung phả đồ trang trí, dưới dạng PNG hoặc PDF.
 
-- **Cây:** cùng bố cục như trang cây, theo các tùy chọn ở mục **Bố cục** (hướng, xếp chồng vợ chồng và anh chị em, khung chi). Khi chia chi thành hàng, các hàng được ngắt theo hình ô đặt cây trên phả đồ thay vì theo màn hình. Chỉ có ô là khác: mỗi đời có độ rộng ô riêng. Cây được vẽ dạng vector theo đúng độ phân giải xuất ([`reportTree.ts`](frontend/src/lib/reportTree.ts)), nên luôn sắc nét.
-- **Độ rộng ô theo đời:** bốn thanh trượt, từ 40% đến 300% độ rộng ô trên trang cây: đời 1, 2, 3, và đời 4 trở đi (mặc định 200, 150, 115 và 85%). Chữ trên ô lớn hơn trên trang cây (tên 18 px, ngày tháng 14 px ở độ rộng 100%), to lên một chút ở ô rộng và nhỏ lại một chút ở ô hẹp. Tên không bao giờ bị cắt: tên dài được xuống dòng (giữa các chữ; một chữ dài hơn cả dòng thì được ngắt giữa các ký tự, và dấu sau tên người đã mất luôn đi cùng chữ cuối), và chỉ ô đó cao thêm. Các đời đầu ít người nên ô rộng; các đời sau đông người hơn nhiều nên hẹp hơn. Ô rộng hơn có chỗ nhờ giãn bố cục ra, vẫn giữ nguyên cấu trúc: khi cây từ trên xuống, chỉ thêm chỗ trong hàng khi ô sắp chạm ô khác, đường nối hoặc khung chi; khi cây từ trái sang phải (mỗi đời một cột), cột có ô rộng hơn sẽ đẩy các cột sau sang bên.
+- **Cây:** cùng bố cục như trang cây, theo các tùy chọn ở mục **Bố cục** (hướng, xếp chồng vợ chồng và anh chị em, khung chi). Khi chia chi thành hàng, các hàng được ngắt theo hình ô đặt cây trên phả đồ thay vì theo màn hình. Chỉ có ô là khác: mỗi đời có cỡ ô riêng. Cây được vẽ dạng vector theo đúng độ phân giải xuất ([`reportTree.ts`](frontend/src/lib/reportTree.ts)), nên luôn sắc nét.
+- **Cỡ ô theo đời:** bốn thanh trượt, từ 40% đến 300% ô trên trang cây: đời 1, 2, 3, và đời 4 trở đi (mặc định 200, 150, 115 và 85%). Chiều rộng, chiều cao và cỡ chữ của ô đều theo cỡ này (chữ không nhỏ hơn một nửa để vẫn dễ đọc); ở 100%, tên 18 px và ngày tháng 14 px, lớn hơn trên trang cây cho dễ in. Các đời đầu ít người nên ô lớn; các đời sau đông người hơn nhiều nên nhỏ hơn. Tên không bao giờ bị cắt: tên dài được xuống dòng (giữa các chữ; một chữ dài hơn cả dòng thì được ngắt giữa các ký tự, và dấu sau tên người đã mất luôn đi cùng chữ cuối), và chỉ ô đó cao thêm. Ô lớn hơn có chỗ nhờ giãn bố cục ra, vẫn giữ nguyên cấu trúc: trong một đời, chỉ thêm chỗ khi ô sắp chạm ô khác, đường nối hoặc khung chi; giữa hai đời, ô lớn có thêm khoảng trống hai bên nên không đè lên đường nối.
 - **Chi:** in *Tất cả các chi*, hoặc đánh dấu một hay nhiều chi trong danh sách được đánh số và đặt tên như trên trang cây (*Chi 2 · Nguyễn Văn Bình*). Các chi đã chọn được in cùng cụ tổ (cha mẹ của người đầu chi), người đầu mỗi chi cùng toàn bộ con cháu, và vợ hoặc chồng của mọi người, theo cùng bố cục; khi chọn từ hai chi, mỗi chi giữ số của nó trong cả cây. Lựa chọn chỉ dùng cho lần tải về đó, không được lưu.
 - **Màu ô:** nền ô, màu tên, màu ngày tháng, và màu đường nối (cũng là màu viền ô và khung chi).
 - **Ảnh nền:** một trong năm nền mẫu, hoặc *Ảnh của bạn* (JPEG, PNG, WebP hoặc GIF bất kỳ). Ảnh quyết định khổ và kích thước trang. Nền mẫu gồm ba kiểu truyền thống (*Cung đình*: đỏ vàng kim, viền hồi văn, băng chữ; *Sen hồng*; *Mây ngọc* có bảng hoành phi) và hai kiểu hiện đại (*Tối giản*, *Hoàng hôn*). Chúng được vẽ bằng mã trong [`frontend/scripts/report-backgrounds.mjs`](frontend/scripts/report-backgrounds.mjs), nên là của riêng dự án, và được phục vụ dạng tệp tĩnh từ [`frontend/public/report-backgrounds/`](frontend/public/report-backgrounds/) (JPEG 2400×1600, kèm ảnh nhỏ 360×240 cho bộ chọn). Mỗi nền mẫu đi kèm vị trí tiêu đề, vị trí cây và các màu hợp với nó ([`reportPresets.ts`](frontend/src/lib/reportPresets.ts)), được áp dụng khi chọn và vẫn chỉnh được. Cây chưa lưu ảnh nền sẽ bắt đầu với *Cung đình*.
@@ -190,8 +192,19 @@ Mọi thành viên của cây (chủ sở hữu, người chỉnh sửa hay ngư
 
 - **Mở nhanh lần đầu:** cây mà bạn đã liên kết sẽ mở **quanh bạn, sâu 3 bước quan hệ** (`GET /graph?rootId=<you>&depth=3`). Tức là bạn, cha mẹ lên tới cụ, con cháu xuống tới chắt, anh chị em, cô dì chú bác, và vợ chồng, thay vì tải tất cả mọi người. Bạn được chọn sẵn, nên nhãn xưng hô tính theo bạn, và thẻ của bạn có nhãn **Bạn**.
 - **Đi lại trong cây:** thanh công cụ hiện "*12 trên 240 người*" khi đang xem quanh. **Hiện tất cả** tải toàn bộ cây, ô chọn số đời mở rộng phạm vi xem, và **Quanh tôi** quay về bạn. Mở một người từ trang **Thành viên** sẽ đưa cây về quanh người đó.
+- **Tìm người:** ô tìm kiếm trên thanh công cụ ([`PersonSearch.tsx`](frontend/src/components/PersonSearch.tsx)) tìm bất kỳ ai trong cây, không chỉ người đang hiện, theo tên, không cần dấu và không cần đúng thứ tự (*nguyen an* tìm ra *Nguyễn Văn An*; tên khớp đúng dấu đã gõ được xếp trước). Chọn một người thì cây chọn người đó và xoay quanh họ. Danh sách người được tải lần đầu khi dùng ô tìm, và tải lại khi cây thay đổi.
 - **Cây chưa liên kết** vẫn tải tất cả mọi người như trước.
 - **Quy tắc:** mỗi người chỉ liên kết được với tối đa một thành viên của cây (`409`, `code: "personTaken"`). Nếu người đó bị xóa, liên kết đơn giản là không còn tác dụng. Ở trang **Chia sẻ**, chủ sở hữu thấy mỗi thành viên là người nào trong cây.
+
+## Họp họ
+
+Cây có thể lưu ngày các buổi họp của gia đình: của cả họ (họp họ) hoặc của một chi (họp chi). Thành viên thấy các buổi sắp tới trên trang cây và có thể nhận email nhắc.
+
+- **Thêm buổi họp** (chủ cây và quản trị viên): **Cài đặt → Họp họ**, *Thêm buổi họp*. Mỗi buổi có tên, dành cho ai (*Cả họ*, hoặc một chi, đánh số và đặt tên như trên trang cây), và ngày: **hằng năm** vào một ngày của tháng âm lịch hoặc dương lịch, ví dụ *10 tháng Giêng*, hoặc vào một thứ trong tuần của tháng đó, ví dụ *Chủ nhật thứ ba của tháng Chạp* (thứ nhất tới thứ tư, hoặc cuối cùng), hoặc **một lần** vào một ngày nhập theo lịch nào cũng được. Giờ, địa điểm và ghi chú là tùy chọn. Biểu mẫu hiện ngay ngày họp lần tới theo cả hai lịch. Mọi người trong cây đều xem được danh sách ở đó.
+- **Trên trang cây:** các buổi họp trong 30 ngày tới hiện trong một thẻ phía trên cây, kèm ngày dương lịch, ngày âm lịch (*10 tháng Giêng năm Đinh Mùi*), giờ, địa điểm và số ngày còn lại. ✕ ẩn thẻ trong phiên trình duyệt, cho tới khi có buổi họp được thêm, đổi ngày hoặc tới hạn.
+- **Email:** ở **Tài khoản của tôi**, mục *Nhắc họp họ*, bật *Gửi email nhắc trước buổi họp họ*, chọn báo trước bao nhiêu ngày (mặc định 7) và những buổi họp nào: *mọi buổi họp trong các cây của tôi*, hoặc *họp cả họ và họp chi của tôi*. Chi của bạn là chi của người bạn đã đánh dấu **Đây là tôi** trong từng cây: người đầu chi, con cháu của người đó, hoặc vợ hay chồng của con cháu. Cùng tác vụ hằng ngày với nhắc ngày giỗ gửi mỗi thành viên một email, mỗi ngày họp nhiều nhất một lần.
+- **Cách tính ngày:** buổi họp hằng năm theo âm lịch được tổ chức vào tháng thường mang số đó, không bao giờ vào tháng nhuận (thứ trong tuần cũng tính trong tháng đó), và vào ngày 29 nếu năm đó tháng thiếu (như ngày giỗ); buổi họp hằng năm vào ngày 29 tháng 2 dương lịch thì các năm khác vào ngày 28. Quy tắc nằm trong [`backend/src/meetings/meetings.ts`](backend/src/meetings/meetings.ts) (giao diện lặp lại quy tắc này chỉ để xem trước khi nhập).
+- **Dữ liệu:** `(:Meeting {id, treeId, title, chiRootId?, repeat, calendar, month?, day?, weekday?, week?, date?, time?, place?, note?})` (`weekday` 0 = Chủ nhật, `week` 1–4 hoặc -1 là tuần cuối, thay cho `day`), bị xóa cùng cây; `(:User)-[:MEETING_SENT {lastSentFor}]->(:Meeting)` để không gửi nhắc hai lần.
 
 ## Nhắc ngày giỗ
 
@@ -389,7 +402,7 @@ Công khai (không cần phiên đăng nhập):
 | --- | --- | --- | --- |
 | GET | `/api/auth/me` | — | Người dùng đang đăng nhập, gồm cả `verificationRequired`, `hasPassword` và `consentRequired` |
 | PATCH | `/api/auth/me` | — | `{ name }`. Đổi tên hiển thị của mình |
-| GET / PATCH | `/api/auth/reminders` | — | Tùy chọn nhắc ngày giỗ: `{ enabled, daysBefore, people }`. PATCH nhận `{ enabled?, daysBefore? }` (0–30) và ghi nhớ ngôn ngữ giao diện cho email |
+| GET / PATCH | `/api/auth/reminders` | — | Tùy chọn nhắc nhở: ngày giỗ `{ enabled, daysBefore, people }` và họp họ `{ meetingsEnabled, meetingDaysBefore, meetingScope: 'all' \| 'mine' }`. PATCH nhận bất kỳ trường nào (số ngày 0–30) và ghi nhớ ngôn ngữ giao diện cho email |
 | POST / DELETE | `/api/auth/privacy` | — | POST `{ version }`: đồng ý Thỏa thuận dữ liệu cá nhân (`409`, `privacyOutdated`, nếu là phiên bản cũ). DELETE rút lại sự đồng ý |
 | POST | `/api/auth/change-password` | — | `{ currentPassword, newPassword }`. Đăng xuất các phiên khác |
 | POST / DELETE | `/api/auth/email` | — | POST `{ email, password? }`: gửi email liên kết xác nhận tới địa chỉ mới (và thông báo tới địa chỉ cũ). DELETE hủy việc đổi đang chờ |
@@ -423,6 +436,8 @@ Công khai (không cần phiên đăng nhập):
 | GET | `/api/trees/:treeId/graph?rootId=&depth=` | viewer | `{ nodes, edges }` cho toàn cây hoặc `depth` (1–8) bước quanh `rootId`, duyệt theo chiều rộng. Người ở dạng tóm tắt (`id, firstName, lastName, gender, birthDate, deathDate`): đủ cho thẻ, bố cục và xưng hô. Thông tin khác (tiểu sử, địa chỉ, nơi sinh, ảnh) được tải bằng `/persons/:id` cho người được bấm vào |
 | POST | `/api/trees/:treeId/import` | editor | `{ people: [{ row, key, firstName, …, fatherKey?, motherKey?, spouseKeys? }], matches?: { [rowKey]: personId }, dryRun? }`. Với `dryRun`, trả về `{ valid, rowErrors, summary, candidates }`, trong đó `candidates` liệt kê, theo khóa dòng viết thường, những người trong cây có thể là dòng đó (`strong`: trùng năm sinh). Nếu không, nhập mọi dòng trong một giao dịch, hoặc trả `400` kèm `rowErrors`. Dòng được khớp không được tạo; liên kết tới chúng đi tới người được khớp |
 | POST | `/api/trees/:treeId/sample` | owner | Thêm gia đình mẫu (24 người, năm đời) vào cây trống và trả về `{ people, parentLinks, spouseLinks }`. `409` nếu cây đã có người |
+| GET | `/api/trees/:treeId/meetings` | viewer | Các buổi họp họ của cây, mỗi buổi kèm người đầu chi (`chiRoot`) và ngày họp tới (`next`), buổi gần nhất trước |
+| POST / PUT / DELETE | `/api/trees/:treeId/meetings[/:id]` | admin | Thêm, thay hoặc xóa một buổi họp: `{ title, chiRootId, repeat: 'yearly' \| 'once', calendar, month, day, date, time, place, note }` |
 | PUT / DELETE | `/api/trees/:treeId/reminders/:personId` | viewer | Bật hoặc tắt nhắc ngày giỗ của riêng bạn cho người đó. PUT cần ngày mất đầy đủ (`400`, `reminderNeedsFullDate`) |
 | PUT | `/api/trees/:treeId/me` | viewer | `{ personId }`. "Đây là tôi": liên kết tư cách thành viên của bạn với người đó. `409` (`personTaken`) nếu thành viên khác đã liên kết với họ |
 | DELETE | `/api/trees/:treeId/me` | viewer | Bỏ liên kết "Đây là tôi" |
@@ -612,7 +627,7 @@ AuraDB Free tạm dừng instance không có thao tác ghi trong vài ngày, và
 
 ### Email nhắc ngày giỗ
 
-Một tác vụ Vercel Cron hằng ngày thứ hai, lúc 00:00 UTC (07:00 giờ Việt Nam), gọi `GET /api/cron/reminders` để gửi email nhắc các ngày giỗ đã tới hạn (xem [Nhắc ngày giỗ](#nhắc-ngày-giỗ)). Nó dùng cùng cách xác thực `CRON_SECRET` và cần `RESEND_API_KEY` để gửi thật. Nó trả về `{ date, emails, failed }` và chạy lại trong cùng ngày vẫn an toàn. Để thử trên máy, đặt `CRON_SECRET` trong `backend/.env` và chạy `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:4000/api/cron/reminders`. Không có `RESEND_API_KEY` thì email được in ra console.
+Một tác vụ Vercel Cron hằng ngày thứ hai, lúc 00:00 UTC (07:00 giờ Việt Nam), gọi `GET /api/cron/reminders` để gửi email nhắc các ngày giỗ đã tới hạn (xem [Nhắc ngày giỗ](#nhắc-ngày-giỗ)), rồi nhắc [họp họ](#họp-họ), dùng chung thời gian của hàm. Nó dùng cùng cách xác thực `CRON_SECRET` và cần `RESEND_API_KEY` để gửi thật. Nó trả về `{ date, emails, failed, postponed, meetings: { emails, failed, postponed } }` và chạy lại trong cùng ngày vẫn an toàn. Để thử trên máy, đặt `CRON_SECRET` trong `backend/.env` và chạy `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:4000/api/cron/reminders`. Không có `RESEND_API_KEY` thì email được in ra console.
 
 ### Project frontend
 

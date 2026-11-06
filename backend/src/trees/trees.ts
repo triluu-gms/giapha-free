@@ -118,8 +118,8 @@ export async function createTree(userId: string, name: string): Promise<string |
 }
 
 /**
- * Deletes a tree with its people, relationships, photos, invitations and
- * memberships. Returns false when there is no such tree. If it was the owner's
+ * Deletes a tree with its people, relationships, photos, invitations, family
+ * meetings and memberships. Returns false when there is no such tree. If it was the owner's
  * last tree, ensurePersonalTree gives them a new, empty one on their next load.
  */
 export async function deleteTree(treeId: string): Promise<boolean> {
@@ -132,6 +132,7 @@ export async function deleteTree(treeId: string): Promise<boolean> {
      CALL (t) { MATCH (p:Person {treeId: t.id}) DETACH DELETE p }
      CALL (t) { MATCH (ph:Photo {treeId: t.id}) DELETE ph }
      CALL (t) { MATCH (i:Invitation {treeId: t.id}) DELETE i }
+     CALL (t) { MATCH (e:Meeting {treeId: t.id}) DETACH DELETE e }
      DETACH DELETE t
      RETURN photoRefs`,
     { treeId },
