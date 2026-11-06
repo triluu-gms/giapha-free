@@ -57,6 +57,7 @@ import {
   updateMemberRole,
 } from '../trees/trees';
 import { graphRouter } from './graph';
+import { meetingsRouter } from './meetings';
 import { personsRouter } from './persons';
 import { photosRouter } from './photos';
 import { relationshipsRouter } from './relationships';
@@ -167,6 +168,7 @@ treesRouter.use('/:treeId/persons', editorForWrites, personsRouter);
 treesRouter.use('/:treeId/relationships', editorForWrites, relationshipsRouter);
 treesRouter.use('/:treeId/photos', editorForWrites, photosRouter);
 treesRouter.use('/:treeId/graph', graphRouter);
+treesRouter.use('/:treeId/meetings', meetingsRouter);
 
 // GET /api/trees/:treeId/branch -> what the caller may edit when they are limited to a branch:
 // { scope: null } for everyone else, or { scope, people: [{ id, level }] } where level is the

@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useI18n } from '@/components/I18nProvider';
 import Icon from '@/components/Icon';
+import MeetingsSection from '@/components/MeetingsSection';
 import RequireAuth from '@/components/RequireAuth';
 import { useCurrentTree } from '@/components/TreeProvider';
 import { api } from '@/lib/api';
@@ -428,6 +429,7 @@ function SettingsPanel() {
       </div>
       <AccountSection />
       <TreeSection />
+      <MeetingsSection key={tree.id} />
       {canManage && (
         // useSearchParams (the ?drive= result) needs a Suspense boundary in the App Router.
         <Suspense fallback={null}>
