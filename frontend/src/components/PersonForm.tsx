@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEv
 import { ACCEPTED_PHOTO_TYPES, isUploadedPhoto, prepareForUpload } from '@/lib/photo';
 import type { Gender, Person, PersonInput } from '@/lib/types';
 import DateInput from './DateInput';
+import { LotusIcon } from './DeathMark';
 import { useI18n } from './I18nProvider';
 import Icon from './Icon';
 import MoreMenu from './MoreMenu';
@@ -35,6 +36,8 @@ export default function PersonForm({ person, onSaved, onCancel }: Props) {
     photoUrl: person?.photoUrl ?? '',
     bio: person?.bio ?? '',
   }));
+  // The mark after their name once they have died: the cross (†) unless they chose the lotus.
+  const [lotus, setLotus] = useState(person?.deathMark === 'lotus');
   const [saving, setSaving] = useState<false | 'uploading' | 'saving'>(false);
   const [error, setError] = useState<string | null>(null);
   const photoUploads = usePhotoUploads();
@@ -116,6 +119,9 @@ export default function PersonForm({ person, onSaved, onCancel }: Props) {
     try {
       const values = { ...form, photoUrl: photoFile ? await uploadPhoto(photoFile) : form.photoUrl };
       const fields: Record<string, string | null> = { gender: form.gender };
+      // Only someone with a death date has a mark; the cross is the default, stored as nothing.
+      const mark = lotus && form.deathDate.trim() ? 'lotus' : null;
+      if (mark || person?.deathMark) fields.deathMark = mark;
       for (const field of TEXT_FIELDS) {
         const value = values[field].trim();
         // Blank fields are omitted on create and cleared (null) on edit.
@@ -171,6 +177,23 @@ export default function PersonForm({ person, onSaved, onCancel }: Props) {
           onChange={(v) => set('deathDate')({ target: { value: v } })}
         />
       </div>
+      {form.deathDate.trim() && (
+        <div className="death-mark-field">
+          <span>{t('form.deathMark')}</span>
+          <div className="segmented" role="group" aria-label={t('form.deathMark')}>
+            <button type="button" className="btn small" aria-pressed={!lotus} onClick={() => setLotus(false)}>
+              <span className="death-mark-sample" aria-hidden="true">†</span>
+              {t('form.deathMarkCross')}
+            </button>
+            <button type="button" className="btn small" aria-pressed={lotus} onClick={() => setLotus(true)}>
+              <span className="death-mark-sample">
+                <LotusIcon />
+              </span>
+              {t('form.deathMarkLotus')}
+            </button>
+          </div>
+        </div>
+      )}
       <label>
         {t('form.birthplace')}
         <input value={form.birthPlace} onChange={set('birthPlace')} />

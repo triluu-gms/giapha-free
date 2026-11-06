@@ -14,6 +14,8 @@ interface ExportPerson {
   gender: string | null;
   birthDate: string | null;
   deathDate: string | null;
+  /** 'lotus', or null for the cross (†). */
+  deathMark: string | null;
   birthPlace: string | null;
   address: string | null;
   photoUrl: string | null;
@@ -37,7 +39,7 @@ export async function loadTreeExport(treeId: string): Promise<TreeExport> {
      RETURN t {.id, .name, settings: ${TREE_SETTINGS_CYPHER}} AS tree,
        COLLECT {
          MATCH (p:Person {treeId: $treeId})
-         RETURN p {.id, .firstName, .lastName, .gender, .birthDate, .deathDate, .birthPlace, .address,
+         RETURN p {.id, .firstName, .lastName, .gender, .birthDate, .deathDate, .deathMark, .birthPlace, .address,
                    .photoUrl, .bio, .createdAt, .updatedAt}
          ORDER BY p.createdAt, p.id
        } AS people,

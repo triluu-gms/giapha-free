@@ -158,6 +158,7 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
   const COMPONENT_GAP = down ? 200 : 80; // unrelated families
   const RANK_SEP = down ? 80 : 64; // between đời
   const STACK_GAP = 12; // within a stacked column
+  const STACK_DROP = 30; // from a household down to the column of its childless children, when that's all it has
   const INDENT = down ? 22 : 18; // room for the column's line
   const ROW_GAP = RANK_SEP + 60; // between wrapped rows of chi (room for the frames' labels)
 
@@ -318,8 +319,18 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     return parents.length ? parents.reduce((s, m) => s + memberAt(h, m).b, 0) / parents.length + B / 2 : breadthOf(h) / 2;
   }
 
-  /** Childless brothers and sisters in columns of at most MAX_STACK, hanging from a line on their left. */
-  const stackBlock = (items: string[], r: number): Branch => {
+  /**
+   * Households whose children are all in stacked columns: nothing hangs below those, so
+   * the columns start just under the household (STACK_DROP) instead of on the next đời's
+   * row, which keeps the line down to them short.
+   */
+  const lifted = new Set<string>();
+
+  /**
+   * Childless brothers and sisters in columns of at most MAX_STACK, hanging from a line on
+   * their left, starting at `top` (the next đời's row, or higher when lifted).
+   */
+  const stackBlock = (items: string[], top: number): Branch => {
     const left = new Map<string, number>();
     const depth = new Map<string, number>();
     const spine = new Map<string, number>();
@@ -328,16 +339,18 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     for (let c = 0; c < items.length; c += MAX_STACK) {
       const column = items.slice(c, c + MAX_STACK);
       const colWidth = Math.max(...column.map(breadthOf));
-      let d = rowStart(r + 1);
+      let d = top;
       for (const h of column) {
         left.set(h, colLeft + INDENT);
         depth.set(h, d);
         spine.set(h, colLeft + INDENT / 2);
         d += depthOf(h) + STACK_GAP;
       }
-      // The column reaches into the đời below; keep other branches clear of it there too.
-      const lastRank = r + 1 + Math.floor((d - STACK_GAP - rowStart(r + 1) - 1) / step);
-      for (let q = r + 1; q <= lastRank; q++) {
+      // The column can reach into the đời below (and, lifted, up into its parents' đời);
+      // keep other branches clear of it in every đời it touches.
+      const firstRank = Math.floor(top / step);
+      const lastRank = Math.floor((d - STACK_GAP - 1) / step);
+      for (let q = firstRank; q <= lastRank; q++) {
         const other = contour.get(q);
         const ext: [number, number] = [colLeft, colLeft + INDENT + colWidth];
         contour.set(q, other ? [Math.min(other[0], ext[0]), Math.max(other[1], ext[1])] : ext);
@@ -351,34 +364,51 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
     const r = rank.get(h)!;
     const kids = branches.get(h) ?? [];
     // Runs of two or more childless siblings become stacked columns.
-    const segments: Branch[] = [];
+    const runs: [number, number][] = [];
     for (let i = 0; i < kids.length; ) {
       let j = i;
       while (opts.stackSiblings && j < kids.length && isLeaf(kids[j]) && kidLane(h, kids[j]) === kidLane(h, kids[i])) j++;
-      if (j - i >= 2) {
-        segments.push(stackBlock(kids.slice(i, j), r));
-        i = j;
-      } else {
-        segments.push(layoutBranch(kids[i]));
-        i++;
-      }
+      runs.push([i, Math.max(j, i + 1)]);
+      i = Math.max(j, i + 1);
     }
+    // All of them in columns: the columns start just under this household.
+    const lift = runs.length > 0 && runs.every(([i, j]) => j - i >= 2);
+    if (lift) lifted.add(h);
+    const top = lift ? rowStart(r) + depthOf(h) + STACK_DROP : rowStart(r + 1);
+    const segments = runs.map(([i, j]) => (j - i >= 2 ? stackBlock(kids.slice(i, j), top) : layoutBranch(kids[i])));
     let acc: Branch | null = null;
     for (const seg of segments) {
-      // Brothers and sisters close together; their own families (cousins) further apart.
-      acc = acc ? placeBeside(acc, seg, (row) => (row === r + 1 ? GAP : FAMILY_GAP), FAMILY_GAP) : seg;
+      // Brothers and sisters close together (in their row, or lifted into ours); their own families (cousins) further apart.
+      acc = acc ? placeBeside(acc, seg, (row) => (row === r + 1 || row === r ? GAP : FAMILY_GAP), FAMILY_GAP) : seg;
     }
     let left = 0;
+    /** Where the line to child household `k` comes down (its column's line, when stacked). */
+    const at = (k: string) => acc!.spine.get(k) ?? acc!.left.get(k)! + memberAt(k, bloodMember(k, h)).b + B / 2;
     if (acc) {
       // Centre the parents over where the lines to their first and last child come down.
-      const at = (k: string) => acc!.spine.get(k) ?? acc!.left.get(k)! + memberAt(k, bloodMember(k, h)).b + B / 2;
       left = (at(kids[0]) + at(kids[kids.length - 1])) / 2 - anchorB(h);
     }
     // The children's merged branch is only ours, so the household is added to it in place.
     const br: Branch = acc ?? { left: new Map(), depth: new Map(), spine: new Map(), contour: new Map() };
     const own = br.contour.get(r);
     const w = breadthOf(h);
-    br.contour.set(r, own ? [Math.min(own[0], left), Math.max(own[1], left + w)] : [left, left + w]);
+    // The line across to the children runs in this đời's band, just below the household, so
+    // it counts as ours there too: otherwise a taller neighbour, or a column of childless
+    // brothers and sisters, could reach down over it and seem to be where it leads.
+    let lo = left;
+    let hi = left + w;
+    if (acc) {
+      lo = Math.min(lo, at(kids[0]));
+      hi = Math.max(hi, at(kids[kids.length - 1]));
+    }
+    // Stacked with several couples, their lines also run down beside the cards (step 5).
+    const couplesWithChildren = laneOf(h, []).count;
+    if (stackedCouples && couplesWithChildren > 1) {
+      const leftCount = Math.ceil(couplesWithChildren / 2);
+      lo = Math.min(lo, left - LANE_SIDE * leftCount);
+      hi = Math.max(hi, left + w + LANE_SIDE * (couplesWithChildren - leftCount));
+    }
+    br.contour.set(r, own ? [Math.min(own[0], lo), Math.max(own[1], hi)] : [lo, hi]);
     br.left.set(h, left);
     return br;
   };
@@ -540,7 +570,8 @@ export function computeTreeLayout(data: TreeData, opts: LayoutOptions, screenRat
             : ps.map((p) => ({ b: pos.get(p)!.b + B / 2, d: pos.get(p)!.d + D }));
       }
       for (const s of starts) {
-        const mid = bottom + RANK_SEP / 2 + shift;
+        // A lifted column's line turns just under the household, halfway down to the column.
+        const mid = bottom + (lifted.has(ph) ? STACK_DROP / 2 : RANK_SEP / 2) + shift;
         let path: Bd[];
         if (route) {
           const bus = route.bus + shift;

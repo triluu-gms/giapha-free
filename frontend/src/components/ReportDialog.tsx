@@ -139,8 +139,8 @@ export default function ReportDialog({
   const [titleArea, setTitleArea] = useState<ReportArea>(start?.titleArea ?? saved.reportTitleArea);
   // Per download, not saved: the right size depends on how much of the tree is shown.
   const [zoom, setZoom] = useState(1);
-  // Per download, like the size: the first person of the one chi to print, or '' for all of them.
-  const [chi, setChi] = useState('');
+  // Per download, like the size: the first person of each chi to print; none ticked prints them all.
+  const [chis, setChis] = useState<string[]>([]);
   const [textColor, setTextColor] = useState(start?.textColor ?? saved.reportTextColor);
   const [depthSizes, setDepthSizes] = useState<ReportDepthSizes>(saved.reportDepthSizes);
   const [colors, setColors] = useState<CardColors>(() =>
@@ -199,22 +199,39 @@ export default function ReportDialog({
   const aspect = background
     ? Math.round(((background.width * (100 - area[1] - area[3])) / (background.height * (100 - area[0] - area[2]))) * 4) / 4 || 0.25
     : undefined;
+  // The chi as the tree page numbers them, whether or not its rows are wrapped.
+  const chiRoots = useMemo(() => listChi(data, layoutOptions), [data, layoutOptions]);
+  // Each chi keeps its number from the whole tree, also when only some of them are printed.
   const chiLabel = useMemo(() => {
     const byId = new Map(data.nodes.map((p) => [p.id, p]));
     return (i: number, rootId: string) => {
       const root = byId.get(rootId);
-      return t('tree.chiLabel', { n: i + 1, name: root ? formatName(root) : '' });
+      const n = chiRoots.indexOf(rootId);
+      return t('tree.chiLabel', { n: (n >= 0 ? n : i) + 1, name: root ? formatName(root) : '' });
     };
-  }, [data, t, formatName]);
-  // The chi as the tree page numbers them, whether or not its rows are wrapped.
-  const chiRoots = useMemo(() => listChi(data, layoutOptions), [data, layoutOptions]);
-  const shown = useMemo(() => (chi && chiRoots.includes(chi) ? chiData(data, chi) : data), [data, chi, chiRoots]);
+  }, [data, t, formatName, chiRoots]);
+  const chosenChis = useMemo(() => chiRoots.filter((id) => chis.includes(id)), [chiRoots, chis]);
+  const shown = useMemo(() => (chosenChis.length ? chiData(data, chosenChis) : data), [data, chosenChis]);
+  const toggleChi = (id: string, on: boolean) => setChis((list) => (on ? [...list, id] : list.filter((c) => c !== id)));
   const reportLayout = useMemo(
     () => layOutReportTree(shown, layoutOptions, { name: formatName, years: formatLifespan, chiLabel }, aspect),
     [shown, layoutOptions, formatName, formatLifespan, chiLabel, aspect],
   );
   // Larger cards spread the layout apart; only this step reruns when a size changes.
-  const reportTree = useMemo(() => sizeReportTree(reportLayout, depthSizes), [reportLayout, depthSizes]);
+  const cardFont = useMemo(() => {
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    return {
+      family: font,
+      measure: (text: string, f: string) => {
+        ctx.font = f;
+        return ctx.measureText(text).width;
+      },
+    };
+  }, [font]);
+  const reportTree = useMemo(
+    () => sizeReportTree(reportLayout, depthSizes, cardFont),
+    [reportLayout, depthSizes, cardFont],
+  );
   const treeStyle = useMemo(() => ({ ...colors, font }), [colors, font]);
 
   useEffect(() => {
@@ -399,18 +416,31 @@ export default function ReportDialog({
           </fieldset>
 
           {chiRoots.length > 1 && (
-            <label className="report-field">
-              <span>{t('report.chi')}</span>
-              <select value={chiRoots.includes(chi) ? chi : ''} onChange={(e) => setChi(e.target.value)}>
-                <option value="">{t('report.chiAll')}</option>
+            <fieldset className="report-margins">
+              <legend>
+                {t('report.chi')}
+                {chosenChis.length > 0 && (
+                  <span className="muted"> · {t('report.chiChosen', { count: chosenChis.length })}</span>
+                )}
+              </legend>
+              <p className="muted small">{t('report.chiHint')}</p>
+              <div className="report-chi-list">
+                <label className="report-chi-option report-chi-all">
+                  <input type="checkbox" checked={!chosenChis.length} onChange={() => setChis([])} />
+                  <span>{t('report.chiAll')}</span>
+                </label>
                 {chiRoots.map((id, i) => (
-                  <option key={id} value={id}>
-                    {chiLabel(i, id)}
-                  </option>
+                  <label key={id} className="report-chi-option">
+                    <input
+                      type="checkbox"
+                      checked={chosenChis.includes(id)}
+                      onChange={(e) => toggleChi(id, e.target.checked)}
+                    />
+                    <span>{chiLabel(i, id)}</span>
+                  </label>
                 ))}
-              </select>
-              <span className="muted small">{t('report.chiHint')}</span>
-            </label>
+              </div>
+            </fieldset>
           )}
 
           <label className="report-field">
