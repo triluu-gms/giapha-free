@@ -159,6 +159,10 @@ export const reminderPreferencesSchema = z
   .object({
     enabled: z.boolean().optional(),
     daysBefore: z.number().int().min(0).max(30).optional(),
+    /** Family meeting (họp họ) emails: on or off, how many days before, and for which meetings. */
+    meetingsEnabled: z.boolean().optional(),
+    meetingDaysBefore: z.number().int().min(0).max(30).optional(),
+    meetingScope: z.enum(['all', 'mine']).optional(),
   })
   .strict();
 

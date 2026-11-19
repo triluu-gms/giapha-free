@@ -1,10 +1,10 @@
 // The tree on the printed report (lib/report.ts): the same layout as the tree page
 // (treeLayout.ts, with the viewer's Layout options), drawn straight onto the
 // report's canvas as vector shapes, so it stays sharp at any size. Only the cards
-// differ: each đời has its own card width (usually wider for the first đời, which
-// have few people, and narrower for later ones), names are never cut short (a long
-// one wraps onto more lines, and its card grows taller), and the colours are the
-// report's own. Larger cards get room by spreading the layout apart (sizeReportTree),
+// differ: each đời has its own card size, width, height and text together (usually
+// larger for the first đời, which have few people, and smaller for later ones),
+// names are never cut short (a long one wraps onto more lines, and its card grows
+// taller), and the colours are the report's own. Larger cards get room by spreading the layout apart (sizeReportTree),
 // which keeps its structure. Pure (no React).
 
 import { CHI_LABEL, CHI_PAD, computeTreeLayout, NODE_H, NODE_W, type LayoutOptions, type Point } from './treeLayout';
@@ -16,8 +16,9 @@ export const DEPTH_SIZE_MIN = 40;
 export const DEPTH_SIZE_MAX = 300;
 
 /**
- * A card's width at đời `g` (0 = the first), relative to the tree page's card:
- * `sizes` has percentages for the first three đời and one for every later đời.
+ * A card's size at đời `g` (0 = the first), relative to the tree page's card, for its
+ * width, height and text alike: `sizes` has percentages for the first three đời and one
+ * for every later đời.
  */
 export const depthScale = (sizes: ReportDepthSizes, g: number) =>
   Math.min(DEPTH_SIZE_MAX, Math.max(DEPTH_SIZE_MIN, sizes[Math.min(g, sizes.length - 1)])) / 100;
@@ -33,9 +34,8 @@ const PAD_Y = 8;
 /** The room kept in a name's last line for a lotus, which is drawn over it. */
 const LOTUS_SPACE = '\u2003';
 const RADIUS = 10;
-/** The text grows a little on wider cards and shrinks a little on narrower ones. */
-const TEXT_SCALE_MIN = 0.8;
-const TEXT_SCALE_MAX = 1.25;
+/** The text grows and shrinks with its card, but never below half size, so names stay readable in print. */
+const TEXT_SCALE_MIN = 0.5;
 /** Room around the tree inside its box. */
 const MARGIN = 20;
 /** Least room kept between a larger card and what's beside it (another card, a line, a chi frame). */
@@ -250,12 +250,12 @@ function wrap(measure: ReportTreeFont['measure'], text: string, font: string, ma
 }
 
 /**
- * The layout with each đời's cards at its width (`sizes`), spread apart where larger
- * cards need room. A card is as tall as the tree page's, or taller when its name
- * wraps onto more lines. Along a đời, room is added only where a card would come too
- * close to another card, a line or a chi frame's edge (the first đời, with few people,
- * usually have room already); from one đời to the next, a larger card gets room on
- * both sides, so it never covers the lines between đời.
+ * The layout with each đời's cards at its size (`sizes`), spread apart where larger
+ * cards need room. A card's width, height and text all follow its size; it grows
+ * taller still when its name wraps onto more lines. Along a đời, room is added only
+ * where a card would come too close to another card, a line or a chi frame's edge (the
+ * first đời, with few people, usually have room already); from one đời to the next, a
+ * larger card gets room on both sides, so it never covers the lines between đời.
  */
 export function sizeReportTree(layout: ReportLayout, sizes: ReportDepthSizes, font: ReportTreeFont): ReportTree {
   const { down, cards, chi, links, couples } = layout;
@@ -269,16 +269,16 @@ export function sizeReportTree(layout: ReportLayout, sizes: ReportDepthSizes, fo
     const scale = depthScale(sizes, c.generation);
     const centre = { x: c.cx, y: c.cy };
     // The card's text: the whole name on as many lines as it needs, then the dates.
-    const k = Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, scale));
+    const k = Math.max(TEXT_SCALE_MIN, scale);
     const width = NODE_W * scale;
-    const inner = width - PAD_X * 2 * Math.min(1, scale);
+    const inner = width - PAD_X * 2 * k;
     const nameFont = `600 ${NAME_SIZE * k}px ${font.family}`;
     const yearsFont = `${YEARS_SIZE * k}px ${font.family}`;
     // The death mark stays with the last word; a lotus is drawn over an em space kept for it.
     const deceased = c.person.deathDate ? (deathMarkOf(c.person) === 'lotus' ? `\u00a0${LOTUS_SPACE}` : '\u00a0†') : '';
     const nameLines = wrap(font.measure, c.name + deceased, nameFont, inner);
     const textHeight = nameLines.length * NAME_SIZE * k * NAME_LINE + (c.years ? YEARS_SIZE * k * YEARS_LINE : 0);
-    const height = Math.max(NODE_H, textHeight + PAD_Y * 2 * k);
+    const height = Math.max(NODE_H * scale, textHeight + PAD_Y * 2 * k);
     const text = { k, nameFont, yearsFont, nameLines, textHeight, width, height };
     // Wider changes the card across a đời top-down and along it left to right; taller the other way.
     const wider = (width - NODE_W) / 2;
@@ -496,7 +496,7 @@ function drawTree(
     ctx.shadowColor = 'rgb(0 0 0 / 22%)';
     ctx.shadowBlur = 5;
     ctx.shadowOffsetY = 1.5;
-    roundedRect(ctx, x, y, w, h, Math.min(RADIUS, w / 4));
+    roundedRect(ctx, x, y, w, h, Math.min(RADIUS * c.k, w / 4, h / 4));
     ctx.fillStyle = style.card;
     ctx.fill();
     ctx.shadowColor = 'transparent';

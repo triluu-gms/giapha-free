@@ -156,6 +156,67 @@ export function anniversaryReminderEmail(
   };
 }
 
+export interface MeetingItem {
+  title: string;
+  treeName: string;
+  /** The chi's first person, for a chi's meeting; null for the whole tree's. */
+  chiName: string | null;
+  /** The meeting's solar date, "YYYY-MM-DD", and the lunar date of that day. */
+  date: string;
+  lunar: { day: number; month: number; canChi: string };
+  time: string | null;
+  place: string | null;
+  note: string | null;
+}
+
+/**
+ * One email per member and day, listing the family meetings (họp họ) that are
+ * `daysBefore` days away, with their solar and lunar dates. In the member's language.
+ */
+export function meetingReminderEmail(
+  to: string,
+  locale: 'en' | 'vi',
+  items: MeetingItem[],
+  daysBefore: number,
+  manageUrl: string,
+): EmailMessage {
+  const vi = locale === 'vi';
+  const when = vi
+    ? daysBefore === 0 ? 'hôm nay' : daysBefore === 1 ? 'ngày mai' : `còn ${daysBefore} ngày nữa`
+    : daysBefore === 0 ? 'today' : daysBefore === 1 ? 'tomorrow' : `in ${daysBefore} days`;
+  const line = (item: MeetingItem, html: boolean) => {
+    const e = (s: string) => (html ? escapeHtml(s) : s);
+    const title = html ? `<strong>${escapeHtml(item.title)}</strong>` : item.title;
+    const whose = item.chiName ? (vi ? ` (chi ${e(item.chiName)}, ${e(item.treeName)})` : ` (${e(item.chiName)}'s chi, ${e(item.treeName)})`) : ` (${e(item.treeName)})`;
+    const month = item.lunar.month === 1 ? 'Giêng' : item.lunar.month === 12 ? 'Chạp' : String(item.lunar.month);
+    const lunar = vi
+      ? `ngày ${item.lunar.day} tháng ${month} năm ${item.lunar.canChi} âm lịch`
+      : `lunar ${item.lunar.day}/${item.lunar.month}, ${item.lunar.canChi} year`;
+    const time = item.time ? (vi ? `, lúc ${item.time}` : `, at ${item.time}`) : '';
+    const place = item.place ? (vi ? `, tại ${e(item.place)}` : `, at ${e(item.place)}`) : '';
+    const note = item.note ? (html ? `<br><span style="color:#555">${e(item.note)}</span>` : `\n  ${item.note}`) : '';
+    return `${title}${whose}: ${dmy(item.date)} (${lunar})${time}${place}${note}`;
+  };
+  const subject = vi
+    ? `Nhắc họp họ: ${when}${items.length === 1 ? ` – ${items[0].title}` : ` (${items.length} buổi)`}`
+    : `Family meeting ${when}${items.length === 1 ? `: ${items[0].title}` : ` (${items.length} meetings)`}`;
+  const intro = vi ? `Họp họ sắp tới (${when}):` : `Coming up ${when}:`;
+  const footer = vi
+    ? 'Bạn nhận email này vì đã bật nhắc họp họ. Có thể tắt hoặc đổi số ngày báo trước trong Tài khoản của tôi.'
+    : 'You get this email because you turned on family meeting reminders. Turn them off or change how early they come in My account.';
+  return {
+    to,
+    subject,
+    html: layout(
+      vi ? 'Nhắc họp họ' : 'Family meeting reminder',
+      [intro, items.map((item) => line(item, true)).join('<br><br>')],
+      { label: vi ? 'Quản lý nhắc nhở' : 'Manage reminders', url: manageUrl },
+      footer,
+    ),
+    text: `${intro}\n\n${items.map((item) => `- ${line(item, false)}`).join('\n')}\n\n${footer}\n${manageUrl}`,
+  };
+}
+
 export interface AccessRequestItem {
   name: string;
   email: string | null;

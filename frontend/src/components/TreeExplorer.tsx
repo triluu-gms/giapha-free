@@ -16,6 +16,8 @@ import { useI18n } from './I18nProvider';
 import PersonForm from './PersonForm';
 import PendingInvitations from './PendingInvitations';
 import PersonPanel from './PersonPanel';
+import PersonSearch from './PersonSearch';
+import UpcomingMeetings from './UpcomingMeetings';
 import { useCurrentTree } from './TreeProvider';
 
 const DEPTHS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -150,6 +152,7 @@ export default function TreeExplorer() {
     <div className="explorer">
       <section className="canvas">
         <PendingInvitations />
+        <UpcomingMeetings version={version} />
         {/* On phones the tool buttons show only their icons; .btn-label keeps their names for screen readers. */}
         <div className="toolbar">
           {canEdit ? (
@@ -176,6 +179,14 @@ export default function TreeExplorer() {
               {t('tree.viewOnly')}
             </span>
           )}
+          {/* Anyone in the tree, also people not shown: picking them shows the tree around them. */}
+          <PersonSearch
+            version={version}
+            onPick={(id) => {
+              setRootId(id);
+              select(id);
+            }}
+          />
           {rootId ? (
             // What the tree is showing, as one compact control: around whom, how deep, or everyone.
             <div className="focus-pill" role="group" aria-label={t('tree.focusedOn')}>

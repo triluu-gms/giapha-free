@@ -609,6 +609,88 @@ div.setting {
 .toolbar .spacer {
   margin-left: auto;
 }
+/* "Find a person" (PersonSearch.tsx): a search box with a list of matches under it */
+.person-search {
+  position: relative;
+  flex: 0 1 260px;
+  min-width: 170px;
+}
+.person-search input {
+  min-height: 36px;
+  padding-left: 34px;
+  border-radius: 999px;
+}
+.person-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  display: flex;
+  color: var(--muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.person-search-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(400px, calc(100vw - 32px));
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
+}
+.person-search-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.person-search-option.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+.person-search-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.person-search-years {
+  margin-left: auto;
+  padding-left: 12px;
+  white-space: nowrap;
+}
+.person-search-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--unknown);
+}
+.person-search-dot.gender-male {
+  background: var(--male);
+}
+.person-search-dot.gender-female {
+  background: var(--female);
+}
+.person-search-dot.gender-other {
+  background: var(--other);
+}
+.person-search-note {
+  padding: 8px 10px;
+}
+@media (max-width: 860px) {
+  /* On phones the box takes the toolbar's first row to itself. */
+  .person-search {
+    flex: 1 1 100%;
+  }
+}
 /* "Focused on <name> · Depth 3 · Show everyone", as one pill */
 .focus-pill {
   display: inline-flex;
@@ -1426,6 +1508,86 @@ tr.row-pending td {
 }
 .success {
   color: #2ea043;
+}
+/* Coming family meetings (họp họ), above the tree (UpcomingMeetings.tsx) */
+.meeting-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  background: color-mix(in srgb, #c9a24a 12%, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+.meeting-banner-icon {
+  display: flex;
+  margin-top: 3px;
+  color: #a07a1f;
+}
+.meeting-banner-list {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+}
+.meeting-banner-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: center;
+}
+.meeting-banner-when {
+  grid-column: 1;
+}
+.meeting-banner-row .badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.badge.meeting-soon {
+  background: #a07a1f;
+  color: #fff;
+}
+/* Settings → Họp họ (MeetingsSection.tsx) */
+.meeting-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+.meeting-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.meeting-item-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.meeting-note {
+  white-space: pre-line;
+}
+.meeting-item-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn.danger-text {
+  color: var(--danger);
+}
+.meeting-form {
+  max-width: 560px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.meeting-next {
+  margin: 0;
 }
 .invite-banner {
   display: grid;

@@ -48,6 +48,34 @@ export type ReportDepthSizes = [number, number, number, number];
 /** [top, right, bottom, left], each 0–95 percent of the background's height or width, leaving at least 5% between opposite sides. */
 export type ReportArea = [number, number, number, number];
 
+/** A family meeting (họp họ, or họp chi for one branch), as entered (lib/meetings.ts). */
+export interface MeetingInput {
+  title: string;
+  /** The chi's first person, or null for the whole tree. */
+  chiRootId: string | null;
+  /** Every year on a day of `calendar`, or once on `date` (solar). */
+  repeat: 'yearly' | 'once';
+  calendar: CalendarKind;
+  month: number | null;
+  day: number | null;
+  /** Instead of `day`: the `week`-th (1–4, or -1 for the last) `weekday` (0 = Sunday … 6 = Saturday) of the month. */
+  weekday: number | null;
+  week: number | null;
+  date: string | null;
+  /** "HH:MM" */
+  time: string | null;
+  place: string | null;
+  note: string | null;
+}
+
+export interface Meeting extends MeetingInput {
+  id: string;
+  /** The chi's first person, when the meeting is a chi's (null if they were removed from the tree). */
+  chiRoot: PersonSummary | null;
+  /** Its next date on or after today (Vietnam time), "YYYY-MM-DD"; null once a one-off meeting is over. */
+  next: string | null;
+}
+
 /** Which of a person's dates. */
 export type DateKind = 'birth' | 'death';
 
@@ -78,6 +106,11 @@ export interface ReminderPreferences {
   enabled: boolean;
   /** How many days before the anniversary the email comes (0 = on the day). */
   daysBefore: number;
+  /** Family meeting (họp họ) emails: on or off, how many days before, and for which meetings. */
+  meetingsEnabled: boolean;
+  meetingDaysBefore: number;
+  /** Every meeting of the user's trees, or only the whole tree's and their own chi's ("This is me"). */
+  meetingScope: 'all' | 'mine';
   people: {
     personId: string;
     firstName: string;
